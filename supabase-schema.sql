@@ -284,9 +284,23 @@ drop policy if exists teams_admin_delete on public.teams;
 create policy teams_admin_delete on public.teams
 for delete to authenticated using ((select public.is_app_admin()));
 
+drop policy if exists teams_admin_update on public.teams;
+create policy teams_admin_update on public.teams
+for update to authenticated
+using ((select public.is_app_admin()))
+with check ((select public.is_app_admin()));
+
 drop policy if exists participants_admin_read on public.registration_participants;
 create policy participants_admin_read on public.registration_participants
 for select to authenticated using ((select public.is_app_admin()));
+
+drop policy if exists participants_admin_insert on public.registration_participants;
+create policy participants_admin_insert on public.registration_participants
+for insert to authenticated with check ((select public.is_app_admin()));
+
+drop policy if exists participants_admin_delete on public.registration_participants;
+create policy participants_admin_delete on public.registration_participants
+for delete to authenticated using ((select public.is_app_admin()));
 
 drop policy if exists fixtures_public_read on public.football_fixtures;
 create policy fixtures_public_read on public.football_fixtures
@@ -334,7 +348,8 @@ revoke all on public.teams, public.registration_participants,
   public.football_fixtures, public.stadiums, public.referees, public.app_admins from anon, authenticated;
 grant select on public.teams, public.football_fixtures, public.stadiums, public.referees to anon, authenticated;
 grant delete on public.teams to authenticated;
-grant select on public.registration_participants to authenticated;
+grant update (team_name, gender, coach, group_name) on public.teams to authenticated;
+grant select, insert, delete on public.registration_participants to authenticated;
 grant insert, delete on public.stadiums to authenticated;
 grant insert, delete on public.referees to authenticated;
 grant insert, delete on public.football_fixtures to authenticated;

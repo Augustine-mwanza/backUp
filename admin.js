@@ -121,10 +121,7 @@ async function refreshDashboard() {
     const awayPlayers = registeredFootballPlayers(participantsByTeam.get(fixture.away_team_id) || []);
     return `
       <tr>
-        <td class="fixture-group-round-cell">
-          <span>${escapeHtml(`${fixture.gender} — ${fixture.group_name}`)}</span>
-          <span class="fixture-round-label">Round ${escapeHtml(fixture.match_round)}</span>
-        </td>
+        <td>${escapeHtml(`${fixture.gender} — ${fixture.group_name}`)}</td>
         <td>${escapeHtml(homeName)} vs ${escapeHtml(awayName)}</td>
         <td class="fixture-schedule-cell">
           <label>Date<input class="date-input" type="date" value="${escapeHtml(validMatchDate(fixture.match_date))}" data-fixture-date="${fixture.id}" ${fixture.match_status === 'played' ? 'disabled' : ''} /></label>
@@ -162,7 +159,7 @@ async function refreshDashboard() {
       </tr>`;
   }).join('');
   document.getElementById('adminFixtures').innerHTML = fixtures.length ? `
-    <table class="admin-table"><thead><tr><th>Group / round</th><th>Teams</th><th>Schedule</th><th>Status / result</th><th>Actions</th></tr></thead>
+    <table class="admin-table"><thead><tr><th>Group</th><th>Teams</th><th>Schedule</th><th>Status / result</th><th>Actions</th></tr></thead>
       <tbody>${fixtureRows}</tbody>
     </table>
   ` : '<p class="empty-state">No fixtures yet. Choose a group and two teams above to create the first matchup.</p>';
@@ -278,23 +275,33 @@ function openTeamEditDialog(team, people, participantsByTeam, teamsById) {
       </div>
       <div class="edit-modal-actions">
         <button type="button" class="secondary-btn" data-close-edit>Cancel</button>
-        <button type="button" class="primary-btn" data-save-edit>Save changes</button>
+        <button type="button" class="primary-btn" data-save-edit disabled>Save changes</button>
       </div>
     </div>
   `;
 
   const tableBody = modal.querySelector('tbody');
+  const saveButton = modal.querySelector('[data-save-edit]');
+  const enableSaveButton = () => {
+    saveButton.disabled = false;
+  };
+  modal.querySelector('.edit-modal-form').addEventListener('input', enableSaveButton);
+  modal.querySelector('.edit-modal-form').addEventListener('change', enableSaveButton);
   modal.querySelector('[data-add-edit-row]').addEventListener('click', () => {
     tableBody.insertAdjacentHTML('beforeend', participantEditorRow(columns));
+    enableSaveButton();
   });
   modal.querySelector('[data-remove-edit-row]').addEventListener('click', () => {
     const rows = tableBody.querySelectorAll('tr');
-    if (rows.length > 0) rows[rows.length - 1].remove();
+    if (rows.length > 0) {
+      rows[rows.length - 1].remove();
+      enableSaveButton();
+    }
   });
   modal.querySelectorAll('[data-close-edit]').forEach(button => {
     button.addEventListener('click', () => modal.remove());
   });
-  modal.querySelector('[data-save-edit]').addEventListener('click', async () => {
+  saveButton.addEventListener('click', async () => {
     const teamName = modal.querySelector('[data-edit-team-name]').value.trim();
     const coach = modal.querySelector('[data-edit-coach]').value.trim();
     const genderValue = modal.querySelector('[data-edit-gender]').value;
@@ -344,6 +351,7 @@ function openTeamEditDialog(team, people, participantsByTeam, teamsById) {
     }
 
     try {
+      saveButton.disabled = true;
       const updatePayload = {
         team_name: teamName,
         coach,
@@ -354,17 +362,26 @@ function openTeamEditDialog(team, people, participantsByTeam, teamsById) {
       } else {
         updatePayload.gender = null;
       }
-      const { error: teamError } = await supabaseClient
+      const { data: updatedTeam, error: teamError } = await supabaseClient
         .from('teams')
         .update(updatePayload)
-        .eq('id', team.id);
+        .eq('id', team.id)
+        .select('id')
+        .maybeSingle();
       if (teamError) throw teamError;
+      if (!updatedTeam) {
+        throw new Error('No team was updated. Run supabase-admin-edit-permissions-migration.sql in the Supabase SQL Editor, then reload the admin page.');
+      }
 
-      const { error: deleteError } = await supabaseClient
+      const { data: deletedParticipants, error: deleteError } = await supabaseClient
         .from('registration_participants')
         .delete()
-        .eq('team_id', team.id);
+        .eq('team_id', team.id)
+        .select('id');
       if (deleteError) throw deleteError;
+      if (deletedParticipants.length !== people.length) {
+        throw new Error('Participant rows were not all updated. Run supabase-admin-edit-permissions-migration.sql in the Supabase SQL Editor, then reload the admin page.');
+      }
 
       if (updatedParticipants.length) {
         const inserts = updatedParticipants.map(details => ({ team_id: team.id, details }));
@@ -378,6 +395,7 @@ function openTeamEditDialog(team, people, participantsByTeam, teamsById) {
       setDashboardMessage('Team registration updated.');
       await refreshDashboard();
     } catch (error) {
+      saveButton.disabled = false;
       setDashboardMessage(error.code === '23505'
         && error.message.includes('registration_participants_student_registration_number_unique')
         ? 'A student registration number is already registered on another football team.'
@@ -669,7 +687,7 @@ async function generateRoundRobinFixtures(event) {
     }
   }).filter(Boolean);
   
-  if (!window.confirm(`Generate round-robin fixtures for ${selectedGroups.length} group(s)? This will create all unique matchups for Round 1.`)) return;
+  if (!window.confirm(`Generate round-robin fixtures for ${selectedGroups.length} group(s)? This will create all unique matchups once for each group.`)) return;
   
   button.disabled = true;
   try {
@@ -792,10 +810,8 @@ async function addFixture(event) {
   }
   const homeTeamId = document.getElementById('newFixtureHome').value;
   const awayTeamId = document.getElementById('newFixtureAway').value;
-  const matchRound = Number(document.getElementById('newFixtureRound').value);
-  if (!group || !homeTeamId || !awayTeamId || homeTeamId === awayTeamId
-      || !Number.isInteger(matchRound) || matchRound < 1) {
-    setDashboardMessage('Select a group, a positive whole-number round, and two different teams for the fixture.', true);
+  if (!group || !homeTeamId || !awayTeamId || homeTeamId === awayTeamId) {
+    setDashboardMessage('Select a group and two different teams for the fixture.', true);
     return;
   }
   const homeTeam = adminTeams.find(team => team.id === homeTeamId);
@@ -811,13 +827,13 @@ async function addFixture(event) {
     const { error } = await supabaseClient.from('football_fixtures').insert({
       gender: group[0],
       group_name: homeTeam.group_name.trim(),
-      match_round: matchRound,
+      match_round: 1,
       home_team_id: homeTeamId,
       away_team_id: awayTeamId,
     });
     if (error) {
       setDashboardMessage(error.code === '23505'
-        ? 'That matchup already exists in this round.'
+        ? 'That matchup already exists for this group.'
         : `Could not add fixture: ${error.message}`, true);
       return;
     }

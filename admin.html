@@ -72,7 +72,7 @@
           </div>
           <div class="fixture-management-actions">
             <div class="generate-fixtures-form">
-              <p><strong>Generate round-robin fixtures</strong> — Automatically create all unique matchups (every team plays every other team once) for selected groups in Round 1.</p>
+              <p><strong>Generate round-robin fixtures</strong> — Automatically create all unique matchups (every team plays every other team once) for the selected groups.</p>
               <div class="generate-fixtures-inputs">
                 <label>Groups to generate<select id="generateFixturesGroups" multiple required><option value="">Select one or more groups</option></select></label>
                 <button id="generateRoundRobinBtn" class="primary-btn" type="button">Generate round-robin fixtures</button>
@@ -81,7 +81,6 @@
           </div>
           <form id="addFixtureForm" class="manual-fixture-form">
             <label>Group<select id="newFixtureGroup" required><option value="">Select group</option></select></label>
-            <label>Round<input id="newFixtureRound" type="number" min="1" step="1" value="1" required /></label>
             <label>Home team<select id="newFixtureHome" required disabled><option value="">Select home team</option></select></label>
             <label>Away team<select id="newFixtureAway" required disabled><option value="">Select away team</option></select></label>
             <button class="primary-btn" type="submit">Add fixture</button>

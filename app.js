@@ -279,7 +279,7 @@ function renderPublicFixtures() {
     return `<section class="match-group-card">
       <h3>${escapeHtml(gender)} — Group ${escapeHtml(group)}</h3>
       <div class="table-wrap"><table class="match-table">
-        <thead><tr><th>Round</th><th>Home Team</th><th>Away Team</th><th>Date</th><th>Time (Africa/Nairobi)</th><th>Venue</th><th>Referee</th><th>Result / status</th></tr></thead>
+        <thead><tr><th>Home Team</th><th>Away Team</th><th>Date</th><th>Time (Africa/Nairobi)</th><th>Venue</th><th>Referee</th><th>Result / status</th></tr></thead>
         <tbody>${fixtures.sort((a, b) =>
     (a.match_date || '9999-99-99').localeCompare(b.match_date || '9999-99-99')
     || (a.match_time || '99:99').localeCompare(b.match_time || '99:99')
@@ -292,7 +292,6 @@ function renderPublicFixtures() {
             ? `${fixture.home_score}–${fixture.away_score}`
             : fixture.match_status === 'postponed' ? 'Postponed' : 'Scheduled';
           return `<tr>
-            <td>${escapeHtml(fixture.match_round)}</td>
             <td>${escapeHtml(homeName)}</td>
             <td>${escapeHtml(awayName)}</td>
             <td>${escapeHtml(fixture.match_date || 'Not scheduled')}</td>
@@ -561,14 +560,14 @@ async function openMatchModal() {
     matchContainer.innerHTML = [...groups.entries()].map(([key, rows]) => {
       const [gender, group] = key.split('|');
       return `<section class="match-group-card"><h3>${escapeHtml(gender)} — Group ${escapeHtml(group)}</h3>
-        <table class="match-table"><thead><tr><th>Round</th><th>Home Team</th><th>Away Team</th><th>Date</th><th>Result / status</th><th>Goalscorers</th></tr></thead><tbody>
+        <table class="match-table"><thead><tr><th>Home Team</th><th>Away Team</th><th>Date</th><th>Result / status</th><th>Goalscorers</th></tr></thead><tbody>
         ${rows.map(fixture => {
           const score = fixture.match_status === 'played'
             ? `${fixture.home_score}–${fixture.away_score}`
             : fixture.match_status === 'postponed' ? 'Postponed' : 'Scheduled';
           const scorers = fixture.match_status === 'played'
             ? `${scorerSummary(fixture.scorers, 'home', fixture.home_team_id, fixture.away_team_id)} / ${scorerSummary(fixture.scorers, 'away', fixture.away_team_id, fixture.home_team_id)}` : '—';
-          return `<tr><td>${escapeHtml(fixture.match_round)}</td><td>${escapeHtml(teamsById.get(fixture.home_team_id)?.team_name || 'Removed team')}</td>
+          return `<tr><td>${escapeHtml(teamsById.get(fixture.home_team_id)?.team_name || 'Removed team')}</td>
             <td>${escapeHtml(teamsById.get(fixture.away_team_id)?.team_name || 'Removed team')}</td>
             <td>${escapeHtml(fixture.match_date || 'Not scheduled')}</td><td>${escapeHtml(score)}</td><td>${scorers}</td></tr>`;
         }).join('')}

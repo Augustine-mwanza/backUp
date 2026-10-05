@@ -6,7 +6,7 @@ This static website uses Supabase (PostgreSQL) for shared team registrations and
 
 1. Create a Supabase project.
 2. In the Supabase SQL Editor, run all of `supabase-schema.sql`.
-   For an existing database, run or rerun `supabase-match-results-migration.sql` to ensure match results, scorers, and assists are enabled, then run `supabase-group-stage-migration.sql` to generate missing round-robin fixtures for existing groups and install the updated fixture trigger.
+   For an existing database, run `supabase-admin-edit-permissions-migration.sql` so admins can save team and participant edits. Also run or rerun `supabase-match-results-migration.sql` to ensure match results, scorers, and assists are enabled, then run `supabase-group-stage-migration.sql` to generate missing round-robin fixtures for existing groups and install the updated fixture trigger.
 3. In **Project Settings → API**, copy the Project URL and the **publishable** key (or legacy `anon` key). Put them in `supabase-config.js`. Never put a `service_role` key in website files.
 4. In **Authentication → Users**, create the admin account(s). Copy an admin's user UUID, then run this in the SQL Editor:
 
