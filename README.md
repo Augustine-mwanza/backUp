@@ -12,7 +12,7 @@ This static website uses Supabase (PostgreSQL) for shared team registrations and
 
    ```sql
    insert into public.app_admins (user_id)
-   values ('PASTE_AUTH_USER_UUID_HERE');
+   values ('0199aa1c-0575-4c49-a1c8-65d4fc51f949');
    ```
 
 5. Publish the files in this folder to GitHub Pages. Use the website URL for public access and append `/admin.html` for the administrator page.
@@ -22,11 +22,13 @@ Admin accounts must be created and explicitly added to `app_admins`. A normal au
 ## Notes
 
 - The Supabase URL and publishable/anon key are intentionally client-visible; database safety depends on the included Row Level Security policies.
-- Registrations submitted by visitors are shared immediately. Adding a football team automatically generates a fixture against each existing team in its gender/group.
+- Registrations submitted by visitors are shared immediately. Admins manually create football fixtures by selecting two teams from the same gender and group; duplicate pairings are prevented. Existing fixtures remain after migration; use **Clear unplayed fixtures** to remove old scheduled matchups while keeping played matches and results.
 - Participant registration supports pasting a newline-separated list into a table cell or tab-separated rows copied from a spreadsheet.
+- Football player student registration numbers must be unique across all football teams. Blank numbers are allowed; surrounding spaces and letter case are ignored when checking duplicates.
+- Admins can add stadiums and referees, manually select fixture matchups, and assign each match a date, local time in Africa/Nairobi (EAT, UTC+3), stadium, and referee. Team pairings and referee assignments are locked after a match is played. Public fixtures display the saved date, time, venue, and referee.
 - Removing a team also removes its participant records and associated fixtures.
-- Football fixtures are grouped by gender and group in the admin page. Admins can schedule a date and time, then on or after the match date save each team's score, goalscorers, and assists separately. Admins can select players from each team's registered roster or enter a name manually. Goalscorer totals cannot exceed the score; assists cannot exceed the side's recorded non-own goals. Own goals are attributed to an opposing registered player and do not count toward the goalscorer ranking. Postponed matches do not count toward standings.
-- Each football group plays a round-robin group stage, where every team meets every other team in the same gender and group once. The top 2 teams in each group qualify for the knockout stages.
+- Football fixture dates use `YYYY-MM-DD`. On or after the scheduled date, admins can record the score, goalscorers, and assists or mark the match postponed. Goalscorers and assist-makers can only be selected from the teams' registered football players. Goalscorer totals cannot exceed the score; assists cannot exceed the side's recorded non-own goals. Own goals are attributed to an opposing registered player and do not count toward the goalscorer ranking. Postponed matches do not count toward standings.
+- Football fixtures are selected by admins for each group. Standings use 3 points for a win and 1 for a draw; the top 2 teams in each group are marked as qualifying.
 - Public group standings and group fixtures are shown directly on the home page; group cards sit side by side when screen space permits and stack on narrow screens. The home page also displays Top Goalscorers and Top Goal Assists. If these sections report a load error, verify that the SQL migrations above have been run in the same Supabase project configured in `supabase-config.js`.
 - Public football group standings use 3 points for a win, 1 for a draw, and 0 for a loss, ordered by points, goal difference, goals scored, then team name.
 - The public page ranks registered players by goals and assists recorded in played fixtures; own goals are excluded from goalscorer rankings.

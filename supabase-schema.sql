@@ -19,29 +19,120 @@ create table if not exists public.registration_participants (
   details jsonb not null check (jsonb_typeof(details) = 'object')
 );
 
+create unique index if not exists registration_participants_student_registration_number_unique
+  on public.registration_participants (lower(btrim(details ->> 'Student Registration Number')))
+  where nullif(btrim(details ->> 'Student Registration Number'), '') is not null;
+
+create table if not exists public.stadiums (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (length(btrim(name)) between 1 and 120),
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists stadiums_name_unique
+  on public.stadiums (lower(btrim(name)));
+
+create table if not exists public.referees (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (length(btrim(name)) between 1 and 120),
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists referees_name_unique
+  on public.referees (lower(btrim(name)));
+
 create table if not exists public.football_fixtures (
   id uuid primary key default gen_random_uuid(),
   gender text not null check (gender in ('Men', 'Women')),
   group_name text not null,
   home_team_id uuid not null references public.teams(id) on delete cascade,
   away_team_id uuid not null references public.teams(id) on delete cascade,
+  match_round integer not null default 1 check (match_round >= 1),
   match_date text not null default '',
-  match_time text not null default '',
+  match_time time without time zone,
+  stadium_id uuid references public.stadiums(id) on delete set null,
+  referee_id uuid references public.referees(id) on delete set null,
   created_at timestamptz not null default now(),
-  constraint football_fixtures_distinct_teams check (home_team_id <> away_team_id),
-  constraint football_fixtures_unique_pair unique (gender, group_name, home_team_id, away_team_id)
+  constraint football_fixtures_distinct_teams check (home_team_id <> away_team_id)
 );
 
 alter table public.football_fixtures
-  add column if not exists match_time text not null default '',
   add column if not exists match_status text not null default 'scheduled'
     check (match_status in ('scheduled', 'postponed', 'played')),
   add column if not exists home_score integer check (home_score is null or home_score >= 0),
   add column if not exists away_score integer check (away_score is null or away_score >= 0),
+  add column if not exists match_round integer not null default 1 check (match_round >= 1),
+  add column if not exists match_time time without time zone,
+  add column if not exists stadium_id uuid references public.stadiums(id) on delete set null,
+  add column if not exists referee_id uuid references public.referees(id) on delete set null,
   add column if not exists scorers jsonb not null default '{"home":[],"away":[]}'::jsonb
     check (jsonb_typeof(scorers) = 'object'),
   add column if not exists assists jsonb not null default '{"home":[],"away":[]}'::jsonb
     check (jsonb_typeof(assists) = 'object');
+
+alter table public.football_fixtures
+  drop constraint if exists football_fixtures_unique_pair;
+
+drop index if exists public.football_fixtures_group_pair_unique;
+create unique index football_fixtures_group_pair_round_unique
+  on public.football_fixtures (
+    gender,
+    upper(btrim(group_name)),
+    least(home_team_id, away_team_id),
+    greatest(home_team_id, away_team_id),
+    match_round
+  );
+
+create or replace function public.validate_football_fixture_teams()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not exists (
+    select 1
+    from public.teams as home_team
+    join public.teams as away_team on away_team.id = new.away_team_id
+    where home_team.id = new.home_team_id
+      and home_team.activity = 'Football'
+      and away_team.activity = 'Football'
+      and home_team.gender = new.gender
+      and away_team.gender = new.gender
+      and upper(btrim(home_team.group_name)) = upper(btrim(new.group_name))
+      and upper(btrim(away_team.group_name)) = upper(btrim(new.group_name))
+  ) then
+    raise exception 'Fixture teams must be football teams in the fixture group and gender';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists validate_football_fixture_teams on public.football_fixtures;
+create trigger validate_football_fixture_teams
+before insert or update of gender, group_name, home_team_id, away_team_id on public.football_fixtures
+for each row execute function public.validate_football_fixture_teams();
+
+create or replace function public.protect_played_fixture_assignments()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if old.match_status = 'played'
+      and (new.home_team_id is distinct from old.home_team_id
+        or new.away_team_id is distinct from old.away_team_id
+        or new.referee_id is distinct from old.referee_id) then
+    raise exception 'Played fixture teams and referee cannot be changed';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists protect_played_fixture_assignments on public.football_fixtures;
+create trigger protect_played_fixture_assignments
+before update of home_team_id, away_team_id, referee_id on public.football_fixtures
+for each row execute function public.protect_played_fixture_assignments();
 
 do $$
 begin
@@ -63,6 +154,8 @@ create table if not exists public.app_admins (
 alter table public.teams enable row level security;
 alter table public.registration_participants enable row level security;
 alter table public.football_fixtures enable row level security;
+alter table public.stadiums enable row level security;
+alter table public.referees enable row level security;
 alter table public.app_admins enable row level security;
 
 create or replace function public.is_app_admin()
@@ -99,28 +192,6 @@ begin
     where (home_team_id = new.id or away_team_id = new.id)
       and not (gender = target_gender and upper(btrim(group_name)) = target_group);
 
-    insert into public.football_fixtures
-      (gender, group_name, home_team_id, away_team_id)
-    select team_one.gender,
-           upper(btrim(team_one.group_name)),
-           team_one.id,
-           team_two.id
-    from public.teams as team_one
-    join public.teams as team_two
-      on team_two.id > team_one.id
-    where team_one.activity = 'Football'
-      and team_two.activity = 'Football'
-      and team_one.gender = target_gender
-      and team_two.gender = target_gender
-      and upper(btrim(team_one.group_name)) = target_group
-      and upper(btrim(team_two.group_name)) = target_group
-      and not exists (
-        select 1
-        from public.football_fixtures as existing
-        where (existing.home_team_id = team_one.id and existing.away_team_id = team_two.id)
-           or (existing.home_team_id = team_two.id and existing.away_team_id = team_one.id)
-      )
-    on conflict (gender, group_name, home_team_id, away_team_id) do nothing;
   else
     delete from public.football_fixtures
     where home_team_id = new.id or away_team_id = new.id;
@@ -135,27 +206,6 @@ drop trigger if exists create_football_fixtures_after_team_insert on public.team
 create trigger sync_group_stage_fixtures_after_team_change
 after insert or update of activity, gender, group_name on public.teams
 for each row execute function public.sync_group_stage_fixtures_for_team();
-
-insert into public.football_fixtures
-  (gender, group_name, home_team_id, away_team_id)
-select team_one.gender,
-       upper(btrim(team_one.group_name)),
-       team_one.id,
-       team_two.id
-from public.teams as team_one
-join public.teams as team_two on team_two.id > team_one.id
-where team_one.activity = 'Football'
-  and team_two.activity = 'Football'
-  and team_one.gender = team_two.gender
-  and upper(btrim(team_one.group_name)) = upper(btrim(team_two.group_name))
-  and length(btrim(team_one.group_name)) > 0
-  and not exists (
-    select 1
-    from public.football_fixtures as existing
-    where (existing.home_team_id = team_one.id and existing.away_team_id = team_two.id)
-       or (existing.home_team_id = team_two.id and existing.away_team_id = team_one.id)
-  )
-on conflict (gender, group_name, home_team_id, away_team_id) do nothing;
 
 create or replace function public.register_team(
   p_activity text,
@@ -248,16 +298,47 @@ for update to authenticated
 using ((select public.is_app_admin()))
 with check ((select public.is_app_admin()));
 
+drop policy if exists fixtures_admin_insert on public.football_fixtures;
+create policy fixtures_admin_insert on public.football_fixtures
+for insert to authenticated with check ((select public.is_app_admin()));
+
 drop policy if exists fixtures_admin_delete on public.football_fixtures;
 create policy fixtures_admin_delete on public.football_fixtures
 for delete to authenticated using ((select public.is_app_admin()));
 
+drop policy if exists stadiums_public_read on public.stadiums;
+create policy stadiums_public_read on public.stadiums
+for select to anon, authenticated using (true);
+
+drop policy if exists stadiums_admin_insert on public.stadiums;
+create policy stadiums_admin_insert on public.stadiums
+for insert to authenticated with check ((select public.is_app_admin()));
+
+drop policy if exists stadiums_admin_delete on public.stadiums;
+create policy stadiums_admin_delete on public.stadiums
+for delete to authenticated using ((select public.is_app_admin()));
+
+drop policy if exists referees_public_read on public.referees;
+create policy referees_public_read on public.referees
+for select to anon, authenticated using (true);
+
+drop policy if exists referees_admin_insert on public.referees;
+create policy referees_admin_insert on public.referees
+for insert to authenticated with check ((select public.is_app_admin()));
+
+drop policy if exists referees_admin_delete on public.referees;
+create policy referees_admin_delete on public.referees
+for delete to authenticated using ((select public.is_app_admin()));
+
 revoke all on public.teams, public.registration_participants,
-  public.football_fixtures, public.app_admins from anon, authenticated;
-grant select on public.teams, public.football_fixtures to anon, authenticated;
+  public.football_fixtures, public.stadiums, public.referees, public.app_admins from anon, authenticated;
+grant select on public.teams, public.football_fixtures, public.stadiums, public.referees to anon, authenticated;
 grant delete on public.teams to authenticated;
 grant select on public.registration_participants to authenticated;
-grant update (match_date, match_time, match_status, home_score, away_score, scorers, assists) on public.football_fixtures to authenticated;
+grant insert, delete on public.stadiums to authenticated;
+grant insert, delete on public.referees to authenticated;
+grant insert, delete on public.football_fixtures to authenticated;
+grant update (match_date, match_time, stadium_id, referee_id, match_status, home_score, away_score, scorers, assists) on public.football_fixtures to authenticated;
 grant delete on public.football_fixtures to authenticated;
 revoke all on public.app_admins from anon, authenticated;
 

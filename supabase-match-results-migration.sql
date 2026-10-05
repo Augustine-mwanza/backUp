@@ -1,5 +1,4 @@
 alter table public.football_fixtures
-  add column if not exists match_time text not null default '',
   add column if not exists match_status text not null default 'scheduled'
     check (match_status in ('scheduled', 'postponed', 'played')),
   add column if not exists home_score integer check (home_score is null or home_score >= 0),
@@ -22,5 +21,5 @@ begin
 end;
 $$;
 
-grant update (match_date, match_time, match_status, home_score, away_score, scorers, assists)
+grant update (match_date, match_status, home_score, away_score, scorers, assists)
   on public.football_fixtures to authenticated;

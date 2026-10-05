@@ -13,7 +13,6 @@
           <div id="timeDisplay" class="time-display">Good Morning!</div>
           <div class="welcome-text">Hello! Welcome to Comrades App. Enjoy the services.</div>
         </div>
-        <a class="secondary-btn admin-link" href="admin.html">Admin</a>
       </header>
 
       <main class="main-panel">
@@ -27,14 +26,12 @@
           <button id="openActivitiesBtn" class="activity-btn">Activities</button>
         </section>
         <section id="standingsSection" class="standings-section" aria-live="polite">
-          <div class="public-section-heading">
-            <h2>Football Group Standings</h2>
-            <button id="refreshPublicDataBtn" type="button" class="secondary-btn">Refresh results</button>
-          </div>
+          <h2>Football Group Standings</h2>
           <div id="standingsContainer"><p class="empty-state">Loading group standings…</p></div>
         </section>
         <section id="publicFixturesSection" class="standings-section" aria-live="polite">
           <h2>Football Fixtures</h2>
+          <p>NB: All times are in East Africa Time (EAT) and are in 24-hour format.</p>
           <div id="publicFixturesContainer"><p class="empty-state">Loading fixtures…</p></div>
         </section>
         <section class="standings-section" aria-live="polite">
@@ -97,12 +94,15 @@
         </div>
       </div>
     </div>
-    <footer>
-      <p> &copy; 2026 Developed with Handwork by <span> MUKITI</span></p>
+    <footer class="public-footer">
+      <div class="footer-inner">
+        <p class="footer-credit">&copy; 2026 Developed with Handwork by <span>MUKITI</span></p>
+        <a class="footer-admin-link" href="admin.html">Admin</a>
+      </div>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20261005-8"></script>
+    <script src="app.js?v=20261005-9"></script>
   </body>
 </html>

@@ -11,6 +11,7 @@ const ACTIVITY_COLUMNS = {
 };
 
 let supabaseClient;
+let adminTeams = [];
 const loginPanel = document.getElementById('loginPanel');
 const dashboard = document.getElementById('dashboard');
 
@@ -42,16 +43,21 @@ async function verifyAdmin(user) {
 }
 
 async function refreshDashboard() {
-  const [teamsResult, participantsResult, fixturesResult] = await Promise.all([
+  const [teamsResult, participantsResult, fixturesResult, stadiumsResult, refereesResult] = await Promise.all([
     supabaseClient.from('teams').select('id, activity, team_name, gender, coach, group_name, created_at').order('created_at', { ascending: false }),
     supabaseClient.from('registration_participants').select('id, team_id, details'),
-    supabaseClient.from('football_fixtures').select('id, gender, group_name, home_team_id, away_team_id, match_date, match_time, match_status, home_score, away_score, scorers, assists').order('gender').order('group_name'),
+    supabaseClient.from('football_fixtures').select('id, gender, group_name, match_round, home_team_id, away_team_id, match_date, match_time, stadium_id, referee_id, match_status, home_score, away_score, scorers, assists').order('gender').order('group_name').order('match_round'),
+    supabaseClient.from('stadiums').select('id, name').order('name'),
+    supabaseClient.from('referees').select('id, name').order('name'),
   ]);
-  const error = teamsResult.error || participantsResult.error || fixturesResult.error;
+  const error = teamsResult.error || participantsResult.error || fixturesResult.error || stadiumsResult.error || refereesResult.error;
   if (error) throw error;
 
   const teams = teamsResult.data;
+  adminTeams = teams;
   const teamsById = new Map(teams.map(team => [team.id, team]));
+  const stadiums = stadiumsResult.data;
+  const referees = refereesResult.data;
   const participantsByTeam = new Map();
   participantsResult.data.forEach(row => {
     const list = participantsByTeam.get(row.team_id) || [];
@@ -78,24 +84,33 @@ async function refreshDashboard() {
     </table>
   ` : '<p class="empty-state">No teams are registered.</p>';
 
+  document.getElementById('adminStadiums').innerHTML = stadiums.length ? `
+    <table class="admin-table"><thead><tr><th>Stadium</th><th>Action</th></tr></thead>
+      <tbody>${stadiums.map(stadium => `<tr>
+        <td>${escapeHtml(stadium.name)}</td>
+        <td class="table-actions"><button class="danger-btn" data-delete-stadium="${stadium.id}">Remove stadium</button></td>
+      </tr>`).join('')}</tbody>
+    </table>
+  ` : '<p class="empty-state">No stadiums have been added yet. Add one above to assign it to a fixture.</p>';
+
+  document.getElementById('adminReferees').innerHTML = referees.length ? `
+    <table class="admin-table"><thead><tr><th>Referee</th><th>Action</th></tr></thead>
+      <tbody>${referees.map(referee => `<tr>
+        <td>${escapeHtml(referee.name)}</td>
+        <td class="table-actions"><button class="danger-btn" data-delete-referee="${referee.id}">Remove referee</button></td>
+      </tr>`).join('')}</tbody>
+    </table>
+  ` : '<p class="empty-state">No referees have been added yet.</p>';
+
+  populateFixtureGroupOptions(teams);
+  populateGenerateFixturesGroups(teams);
   const fixtures = fixturesResult.data;
-  const fixturesByGroup = new Map();
-  fixtures.forEach(fixture => {
-    const key = `${fixture.gender}|${fixture.group_name}`;
-    const groupFixtures = fixturesByGroup.get(key) || [];
-    groupFixtures.push(fixture);
-    fixturesByGroup.set(key, groupFixtures);
-  });
-  document.getElementById('adminFixtures').innerHTML = fixtures.length ? [...fixturesByGroup.entries()].map(([key, groupFixtures]) => {
-    const [gender, groupName] = key.split('|');
-    return `<section class="admin-fixture-group">
-      <h4>${escapeHtml(gender)} — Group ${escapeHtml(groupName)}</h4>
-      <div class="admin-fixture-grid">${groupFixtures.map(fixture => {
+  const fixtureRows = fixtures.map(fixture => {
     const homeName = teamsById.get(fixture.home_team_id)?.team_name || 'Team removed';
     const awayName = teamsById.get(fixture.away_team_id)?.team_name || 'Team removed';
     const due = matchDateReached(fixture.match_date);
-    const canEditResult = fixture.match_status !== 'postponed'
-      && (fixture.match_status === 'played' || due);
+    const canEditResult = fixture.match_status === 'played'
+      || (fixture.match_status === 'scheduled' && due);
     const scorerData = fixture.scorers || { home: [], away: [] };
     const homeScorers = Array.isArray(scorerData.home) ? scorerData.home : [];
     const awayScorers = Array.isArray(scorerData.away) ? scorerData.away : [];
@@ -104,38 +119,66 @@ async function refreshDashboard() {
     const awayAssists = Array.isArray(assistData.away) ? assistData.away : [];
     const homePlayers = registeredFootballPlayers(participantsByTeam.get(fixture.home_team_id) || []);
     const awayPlayers = registeredFootballPlayers(participantsByTeam.get(fixture.away_team_id) || []);
-    const canManageResult = canEditResult;
-    return `<article class="admin-fixture-card" data-admin-fixture="${fixture.id}" data-home-team-id="${fixture.home_team_id}" data-away-team-id="${fixture.away_team_id}">
-      <header class="admin-fixture-heading">
-        <div class="admin-fixture-teams"><strong>${escapeHtml(homeName)}</strong><span>vs</span><strong>${escapeHtml(awayName)}</strong></div>
-        <span class="match-status">${escapeHtml(fixture.match_status || 'scheduled')}</span>
-      </header>
-      <div class="admin-fixture-schedule">
-        <label>Date<input class="date-input" type="date" value="${escapeHtml(validMatchDate(fixture.match_date))}" data-fixture-date="${fixture.id}" /></label>
-        <label>Time<input class="time-input" type="time" value="${escapeHtml(validMatchTime(fixture.match_time))}" data-fixture-time="${fixture.id}" /></label>
-        <button type="button" class="secondary-btn" data-save-date="${fixture.id}">Save date &amp; time</button>
-      </div>
-      ${canManageResult ? `<div class="admin-side-results">
-        ${fixtureSideEditorMarkup(fixture, 'home', homeName, awayName, homePlayers, awayPlayers, homeScorers, homeAssists)}
-        ${fixtureSideEditorMarkup(fixture, 'away', awayName, homeName, awayPlayers, homePlayers, awayScorers, awayAssists)}
-      </div>` : `<p class="admin-result-hint">${fixture.match_status === 'postponed' ? 'Awaiting a new match date.' : 'Result entry opens on the match date.'}</p>`}
-      <footer class="admin-fixture-actions">
-        ${fixture.match_status === 'postponed'
-          ? `<button type="button" class="secondary-btn" data-schedule-match="${fixture.id}">Mark scheduled</button>`
-          : (due && fixture.match_status !== 'played' ? `<button type="button" class="secondary-btn" data-postpone-match="${fixture.id}">Mark postponed</button>` : '')}
-        <button type="button" class="danger-btn" data-delete-fixture="${fixture.id}">Remove fixture</button>
-      </footer>
-    </article>`;
-  }).join('')}</div>
-    </section>`;
-  }).join('') : '<p class="empty-state">No fixtures have been generated yet.</p>';
+    return `
+      <tr>
+        <td class="fixture-group-round-cell">
+          <span>${escapeHtml(`${fixture.gender} — ${fixture.group_name}`)}</span>
+          <span class="fixture-round-label">Round ${escapeHtml(fixture.match_round)}</span>
+        </td>
+        <td>${escapeHtml(homeName)} vs ${escapeHtml(awayName)}</td>
+        <td class="fixture-schedule-cell">
+          <label>Date<input class="date-input" type="date" value="${escapeHtml(validMatchDate(fixture.match_date))}" data-fixture-date="${fixture.id}" ${fixture.match_status === 'played' ? 'disabled' : ''} /></label>
+          <label>Time (Africa/Nairobi)<input class="time-input" type="time" value="${escapeHtml(validMatchTime(fixture.match_time))}" data-fixture-time="${fixture.id}" ${fixture.match_status === 'played' ? 'disabled' : ''} /></label>
+          <label>Stadium<select data-fixture-stadium="${fixture.id}" ${fixture.match_status === 'played' ? 'disabled' : ''}>
+            <option value="">Select stadium</option>
+            ${stadiums.map(stadium => `<option value="${escapeHtml(stadium.id)}" ${stadium.id === fixture.stadium_id ? 'selected' : ''}>${escapeHtml(stadium.name)}</option>`).join('')}
+          </select></label>
+          <label>Referee<select data-fixture-referee="${fixture.id}" ${fixture.match_status === 'played' ? 'disabled' : ''}>
+            <option value="">Select referee</option>
+            ${referees.map(referee => `<option value="${escapeHtml(referee.id)}" ${referee.id === fixture.referee_id ? 'selected' : ''}>${escapeHtml(referee.name)}</option>`).join('')}
+          </select></label>
+          ${fixture.match_status !== 'played' ? `<button class="secondary-btn save-date-btn" data-save-schedule="${fixture.id}">Save schedule</button>` : ''}
+        </td>
+        <td>
+          <span class="match-status">${escapeHtml(fixture.match_status || 'scheduled')}</span>
+          ${canEditResult ? `<div class="score-inputs">
+            <label>${escapeHtml(homeName)}<input type="number" min="0" step="1" value="${fixture.home_score ?? ''}" data-home-score="${fixture.id}" aria-label="${escapeHtml(homeName)} goals" /></label>
+            <label>${escapeHtml(awayName)}<input type="number" min="0" step="1" value="${fixture.away_score ?? ''}" data-away-score="${fixture.id}" aria-label="${escapeHtml(awayName)} goals" /></label>
+          </div>` : fixture.match_status === 'postponed' ? '<p>Awaiting a new match date.</p>' : '<p>Result entry opens on the match date.</p>'}
+          ${canEditResult ? `<div class="result-player-details">
+            ${scorerEditorMarkup(fixture.id, 'home', homeName, awayName, homePlayers, awayPlayers, homeScorers)}
+            ${scorerEditorMarkup(fixture.id, 'away', awayName, homeName, awayPlayers, homePlayers, awayScorers)}
+            ${assistEditorMarkup(fixture.id, 'home', homeName, homePlayers, homeAssists)}
+            ${assistEditorMarkup(fixture.id, 'away', awayName, awayPlayers, awayAssists)}
+          </div>` : ''}
+        </td>
+        <td class="table-actions">
+          ${canEditResult ? `<button class="primary-btn save-result-btn" data-save-result="${fixture.id}">Save result</button>` : ''}
+          ${fixture.match_status === 'postponed'
+            ? `<button class="secondary-btn schedule-match-btn" data-schedule-match="${fixture.id}">Mark scheduled</button>`
+            : (due && fixture.match_status !== 'played' ? `<button class="secondary-btn postpone-match-btn" data-postpone-match="${fixture.id}">Mark postponed</button>` : '')}
+          ${fixture.match_status !== 'played' ? `<button class="danger-btn" data-delete-fixture="${fixture.id}">Remove fixture</button>` : ''}
+        </td>
+      </tr>`;
+  }).join('');
+  document.getElementById('adminFixtures').innerHTML = fixtures.length ? `
+    <table class="admin-table"><thead><tr><th>Group / round</th><th>Teams</th><th>Schedule</th><th>Status / result</th><th>Actions</th></tr></thead>
+      <tbody>${fixtureRows}</tbody>
+    </table>
+  ` : '<p class="empty-state">No fixtures yet. Choose a group and two teams above to create the first matchup.</p>';
 
+  document.querySelectorAll('[data-delete-stadium]').forEach(button => {
+    button.addEventListener('click', () => removeStadium(button.dataset.deleteStadium));
+  });
+  document.querySelectorAll('[data-delete-referee]').forEach(button => {
+    button.addEventListener('click', () => removeReferee(button.dataset.deleteReferee));
+  });
   document.querySelectorAll('[data-edit-team]').forEach(button => {
     button.addEventListener('click', () => {
       const team = teams.find(item => item.id === button.dataset.editTeam);
       if (!team) return;
       const people = participantsByTeam.get(team.id) || [];
-      openTeamEditDialog(team, people);
+      openTeamEditDialog(team, people, participantsByTeam, teamsById);
     });
   });
   document.querySelectorAll('[data-delete-team]').forEach(button => {
@@ -144,11 +187,11 @@ async function refreshDashboard() {
   document.querySelectorAll('[data-delete-fixture]').forEach(button => {
     button.addEventListener('click', () => removeFixture(button.dataset.deleteFixture, button));
   });
-  document.querySelectorAll('[data-save-date]').forEach(button => {
-    button.addEventListener('click', () => saveFixtureDate(button.dataset.saveDate, button));
+  document.querySelectorAll('[data-save-schedule]').forEach(button => {
+    button.addEventListener('click', () => saveFixtureSchedule(button.dataset.saveSchedule, button));
   });
-  document.querySelectorAll('[data-save-side-result]').forEach(button => {
-    button.addEventListener('click', () => saveFixtureSideResult(button.dataset.fixtureId, button.dataset.side, button));
+  document.querySelectorAll('[data-save-result]').forEach(button => {
+    button.addEventListener('click', () => saveFixtureResult(button.dataset.saveResult, button));
   });
   document.querySelectorAll('[data-postpone-match]').forEach(button => {
     button.addEventListener('click', () => setFixtureStatus(button.dataset.postponeMatch, 'postponed', button));
@@ -168,19 +211,13 @@ async function refreshDashboard() {
   document.querySelectorAll('.remove-assist-btn').forEach(button => {
     button.addEventListener('click', () => button.closest('.assist-row').remove());
   });
-  document.querySelectorAll('.scorer-player').forEach(picker => {
-    bindPlayerPicker(picker.closest('.scorer-row'), '.scorer-player');
-  });
-  document.querySelectorAll('.assist-player').forEach(picker => {
-    bindPlayerPicker(picker.closest('.assist-row'), '.assist-player');
-  });
 }
 
 function participantEditorRow(columns, details = {}) {
   return `<tr>${columns.map(column => `<td><input type="text" value="${escapeHtml(details[column] ?? '')}" aria-label="${escapeHtml(column)}" /></td>`).join('')}</tr>`;
 }
 
-function openTeamEditDialog(team, people) {
+function openTeamEditDialog(team, people, participantsByTeam, teamsById) {
   const columns = ACTIVITY_COLUMNS[team.activity] || [];
   const modal = document.createElement('div');
   modal.className = 'edit-modal-backdrop';
@@ -284,6 +321,28 @@ function openTeamEditDialog(team, people) {
       }
     }
 
+    if (team.activity === 'Football') {
+      const registrationNumbers = updatedParticipants
+        .map(participant => normalizeStudentRegistrationNumber(participant['Student Registration Number']))
+        .filter(Boolean);
+      if (new Set(registrationNumbers).size !== registrationNumbers.length) {
+        setDashboardMessage('Each football player must have a unique student registration number.', true);
+        return;
+      }
+      const numbersUsedByOtherTeams = new Set();
+      for (const [otherTeamId, rows] of participantsByTeam) {
+        if (otherTeamId === team.id || teamsById.get(otherTeamId)?.activity !== 'Football') continue;
+        rows.forEach(row => {
+          const number = normalizeStudentRegistrationNumber(row.details?.['Student Registration Number']);
+          if (number) numbersUsedByOtherTeams.add(number);
+        });
+      }
+      if (registrationNumbers.some(number => numbersUsedByOtherTeams.has(number))) {
+        setDashboardMessage('A student registration number is already registered on another football team.', true);
+        return;
+      }
+    }
+
     try {
       const updatePayload = {
         team_name: teamName,
@@ -319,34 +378,27 @@ function openTeamEditDialog(team, people) {
       setDashboardMessage('Team registration updated.');
       await refreshDashboard();
     } catch (error) {
-      setDashboardMessage(`Could not update the registration: ${error.message}`, true);
+      setDashboardMessage(error.code === '23505'
+        && error.message.includes('registration_participants_student_registration_number_unique')
+        ? 'A student registration number is already registered on another football team.'
+        : `Could not update the registration: ${error.message}`, true);
     }
   });
 
   document.body.appendChild(modal);
 }
 
-function fixtureSideEditorMarkup(fixture, side, teamName, opposingTeamName, players, opposingPlayers, scorers, assists) {
-  return `<section class="admin-fixture-side">
-    <h5>${escapeHtml(teamName)}</h5>
-    <label class="admin-side-score">Score
-      <input type="number" min="0" step="1" value="${fixture[`${side}_score`] ?? ''}" data-side-score="${fixture.id}-${side}" aria-label="${escapeHtml(teamName)} score" />
-    </label>
-    ${scorerEditorMarkup(fixture.id, side, teamName, opposingTeamName, players, opposingPlayers, scorers)}
-    ${assistEditorMarkup(fixture.id, side, teamName, players, assists)}
-    <button type="button" class="primary-btn side-save-btn" data-save-side-result data-fixture-id="${fixture.id}" data-side="${side}">Save ${escapeHtml(teamName)}</button>
-  </section>`;
+function normalizeStudentRegistrationNumber(value) {
+  return String(value || '').trim().toLowerCase();
 }
 
 function registeredFootballPlayers(rows) {
-  return rows.map(row => {
-    const details = row.details || {};
-    const playerName = Object.entries(details)
-      .find(([key]) => key.trim().toLowerCase() === 'player name')?.[1];
-    return typeof playerName === 'string' && playerName.trim()
-      ? { id: String(row.id), name: playerName.trim(), teamId: String(row.team_id) }
-      : null;
-  }).filter(Boolean);
+  return rows.filter(row => row.details?.['Player Name']?.trim())
+    .map(row => ({
+      id: String(row.id),
+      name: row.details['Player Name'].trim(),
+      teamId: String(row.team_id),
+    }));
 }
 
 function scorerEditorMarkup(fixtureId, side, teamName, opposingTeamName, teamPlayers, opposingPlayers, records) {
@@ -356,141 +408,112 @@ function scorerEditorMarkup(fixtureId, side, teamName, opposingTeamName, teamPla
     <strong>${escapeHtml(teamName)} goals</strong>
     <div class="scorer-list" data-scorer-list="${fixtureId}-${side}" data-scorer-side="${side}" data-own-goal="false">
       ${scorerRowsMarkup(normalRecords, teamPlayers)}
-      ${scorerPlayerTemplateMarkup(teamPlayers)}
+      <select class="scorer-player-template hidden" tabindex="-1" aria-hidden="true">
+        <option value="">Select registered player</option>${teamPlayers.map(player =>
+    `<option value="${escapeHtml(player.id)}" data-team-id="${escapeHtml(player.teamId)}">${escapeHtml(player.name)}</option>`
+  ).join('')}
+      </select>
     </div>
-    <button type="button" class="secondary-btn add-scorer-btn" data-add-scorer data-side="${side}" data-own-goal="false">Add scorer</button>
+    <button type="button" class="secondary-btn add-scorer-btn" data-add-scorer data-side="${side}" data-own-goal="false" ${teamPlayers.length ? '' : 'disabled'}>Add goal scorer</button>
     <strong>Own goals credited to ${escapeHtml(teamName)}</strong>
     <div class="scorer-list" data-scorer-list="${fixtureId}-${side}-own" data-scorer-side="${side}" data-own-goal="true">
       ${scorerRowsMarkup(ownGoalRecords, opposingPlayers)}
-      ${scorerPlayerTemplateMarkup(opposingPlayers)}
+      <select class="scorer-player-template hidden" tabindex="-1" aria-hidden="true">
+        <option value="">Select registered player</option>${opposingPlayers.map(player =>
+    `<option value="${escapeHtml(player.id)}" data-team-id="${escapeHtml(player.teamId)}">${escapeHtml(player.name)}</option>`
+  ).join('')}
+      </select>
     </div>
-    <button type="button" class="secondary-btn add-scorer-btn" data-add-scorer data-side="${side}" data-own-goal="true">Add own goal</button>
+    <button type="button" class="secondary-btn add-scorer-btn" data-add-scorer data-side="${side}" data-own-goal="true" ${opposingPlayers.length ? '' : 'disabled'}>Add own goal</button>
     <small>${escapeHtml(opposingTeamName)} player must be selected for an own goal.</small>
   </div>`;
 }
 
-function scorerPlayerTemplateMarkup(players) {
-  return `<select class="scorer-player-template hidden" tabindex="-1" aria-hidden="true">
-    <option value="">Select registered player</option>
-    ${players.map(player => `<option value="${escapeHtml(player.id)}" data-team-id="${escapeHtml(player.teamId)}">${escapeHtml(player.name)}</option>`).join('')}
-    <option value="manual">Enter player manually</option>
-  </select>`;
-}
-
 function scorerRowsMarkup(records, players) {
-  const rows = records.length ? records : [{ participant_id: '', goals: 1 }];
-  return rows.map(record => {
-    const isRegistered = players.some(player => player.id === String(record.participant_id));
-    const isManual = !isRegistered && Boolean(record.player?.trim());
-    return `<div class="scorer-row">
-      <select class="scorer-player" aria-label="Registered player">
-        <option value="">Select registered player</option>
-        ${players.length ? '' : '<option value="" disabled>No registered players found for this team</option>'}
-        ${players.map(player => `<option value="${escapeHtml(player.id)}" data-team-id="${escapeHtml(player.teamId)}" ${isRegistered && player.id === String(record.participant_id) ? 'selected' : ''}>${escapeHtml(player.name)}</option>`).join('')}
-        <option value="manual" ${isManual ? 'selected' : ''}>Enter player manually</option>
-      </select>
-      <label class="manual-player-field${isManual ? '' : ' hidden'}">
-        <span class="sr-only">Player name</span>
-        <input class="manual-player-name" type="text" maxlength="120" value="${isManual ? escapeHtml(record.player || '') : ''}" placeholder="Type player name" aria-label="Player name" />
-      </label>
-      <input class="scorer-goals" type="number" min="1" step="1" value="${Number.isInteger(record.goals) && record.goals > 0 ? record.goals : 1}" aria-label="Goals scored" />
-      <button type="button" class="danger-btn remove-scorer-btn" aria-label="Remove scorer">Remove</button>
-    </div>`;
-  }).join('');
+  const validRecords = records.filter(record =>
+    players.some(player => player.id === String(record.participant_id)),
+  );
+  return validRecords.map(record => `<div class="scorer-row">
+    <select class="scorer-player" aria-label="Registered player">
+      <option value="">Select registered player</option>
+      ${players.map(player => `<option value="${escapeHtml(player.id)}" data-team-id="${escapeHtml(player.teamId)}" ${player.id === String(record.participant_id) ? 'selected' : ''}>${escapeHtml(player.name)}</option>`).join('')}
+    </select>
+    <input class="scorer-goals" type="number" min="1" step="1" value="${Number.isInteger(record.goals) && record.goals > 0 ? record.goals : 1}" aria-label="Goals scored" />
+    <button type="button" class="danger-btn remove-scorer-btn" aria-label="Remove scorer">Remove</button>
+  </div>`).join('');
 }
 
 function assistEditorMarkup(fixtureId, side, teamName, players, records) {
-  const rows = records.length ? records : [{ participant_id: '', assists: 1 }];
+  const validRecords = records.filter(record =>
+    players.some(player => player.id === String(record.participant_id)),
+  );
   return `<div class="assist-editor">
     <strong>${escapeHtml(teamName)} assists</strong>
     <div class="assist-list" data-assist-list="${fixtureId}-${side}">
-      ${rows.map(record => assistRowMarkup(record, players)).join('')}
+      ${validRecords.map(record => assistRowMarkup(record, players)).join('')}
       <select class="assist-player-template hidden" tabindex="-1" aria-hidden="true">
-        <option value="">Select registered player</option>
-        ${players.map(player => `<option value="${escapeHtml(player.id)}" data-team-id="${escapeHtml(player.teamId)}">${escapeHtml(player.name)}</option>`).join('')}
-        <option value="manual">Enter player manually</option>
+        <option value="">Select registered player</option>${players.map(player =>
+    `<option value="${escapeHtml(player.id)}" data-team-id="${escapeHtml(player.teamId)}">${escapeHtml(player.name)}</option>`
+  ).join('')}
       </select>
     </div>
-    <button type="button" class="secondary-btn" data-add-assist data-side="${side}">Add assist</button>
+    <button type="button" class="secondary-btn" data-add-assist data-side="${side}" ${players.length ? '' : 'disabled'}>Add assist</button>
   </div>`;
 }
 
 function assistRowMarkup(record, players) {
-  const isRegistered = players.some(player => player.id === String(record.participant_id));
-  const isManual = !isRegistered && Boolean(record.player?.trim());
   return `<div class="assist-row">
     <select class="assist-player" aria-label="Player who made the assist">
       <option value="">Select registered player</option>
-      ${players.length ? '' : '<option value="" disabled>No registered players found for this team</option>'}
-      ${players.map(player => `<option value="${escapeHtml(player.id)}" data-team-id="${escapeHtml(player.teamId)}" ${isRegistered && player.id === String(record.participant_id) ? 'selected' : ''}>${escapeHtml(player.name)}</option>`).join('')}
-      <option value="manual" ${isManual ? 'selected' : ''}>Enter player manually</option>
+      ${players.map(player => `<option value="${escapeHtml(player.id)}" data-team-id="${escapeHtml(player.teamId)}" ${player.id === String(record.participant_id) ? 'selected' : ''}>${escapeHtml(player.name)}</option>`).join('')}
     </select>
-    <label class="manual-player-field${isManual ? '' : ' hidden'}">
-      <span class="sr-only">Player name</span>
-      <input class="manual-player-name" type="text" maxlength="120" value="${isManual ? escapeHtml(record.player || '') : ''}" placeholder="Type player name" aria-label="Player name" />
-    </label>
     <input class="assist-count" type="number" min="1" step="1" value="${Number.isInteger(record.assists) && record.assists > 0 ? record.assists : 1}" aria-label="Assists made" />
     <button type="button" class="danger-btn remove-assist-btn" aria-label="Remove assist">Remove</button>
   </div>`;
 }
 
 function addAssistRow(button) {
-  const fixtureId = button.closest('[data-admin-fixture]').dataset.adminFixture;
+  const fixtureId = button.closest('tr').querySelector('[data-save-result]').dataset.saveResult;
   const listId = `${fixtureId}-${button.dataset.side}`;
   const list = document.querySelector(`[data-assist-list="${CSS.escape(listId)}"]`);
-  const players = registeredFootballPlayersForPicker(list);
-  const template = list.querySelector('.assist-player-template');
-  const wrapper = document.createElement('div');
-  wrapper.innerHTML = assistRowMarkup({ participant_id: '', assists: 1 }, players);
-  const newRow = wrapper.firstElementChild;
-  list.insertBefore(newRow, template);
-  newRow.querySelector('.remove-assist-btn').addEventListener('click', () => newRow.remove());
-  bindPlayerPicker(newRow, '.assist-player');
+  const optionSource = list.querySelector('.assist-player-template');
+  const row = document.createElement('div');
+  row.className = 'assist-row';
+  row.innerHTML = `<select class="assist-player" aria-label="Player who made the assist">${optionSource.innerHTML}</select>
+    <input class="assist-count" type="number" min="1" step="1" value="1" aria-label="Assists made" />
+    <button type="button" class="danger-btn remove-assist-btn" aria-label="Remove assist">Remove</button>`;
+  list.insertBefore(row, optionSource);
+  row.querySelector('.remove-assist-btn').addEventListener('click', () => row.remove());
 }
 
 function addScorerRow(button) {
-  const fixtureId = button.closest('[data-admin-fixture]').dataset.adminFixture;
+  const fixtureId = button.closest('tr').querySelector('[data-save-result]').dataset.saveResult;
   const side = button.dataset.side;
   const ownGoal = button.dataset.ownGoal === 'true';
   const listId = `${fixtureId}-${side}${ownGoal ? '-own' : ''}`;
   const list = document.querySelector(`[data-scorer-list="${CSS.escape(listId)}"]`);
   const optionSource = list.querySelector('.scorer-player-template');
-  const players = [...optionSource.options]
-    .filter(option => option.value && option.value !== 'manual')
-    .map(option => ({ id: option.value, name: option.textContent, teamId: option.dataset.teamId }));
-  const wrapper = document.createElement('div');
-  wrapper.innerHTML = scorerRowsMarkup([{ participant_id: '', goals: 1 }], players);
-  const newRow = wrapper.firstElementChild;
-  list.appendChild(newRow);
-  newRow.querySelector('.remove-scorer-btn').addEventListener('click', () => newRow.remove());
-  bindPlayerPicker(newRow, '.scorer-player');
-}
-
-function registeredFootballPlayersForPicker(list) {
-  return [...list.querySelector('.assist-player-template').options]
-    .filter(option => option.value && option.value !== 'manual')
-    .map(option => ({ id: option.value, name: option.textContent, teamId: option.dataset.teamId }));
-}
-
-function bindPlayerPicker(row, selector) {
-  const picker = row.querySelector(selector);
-  picker.addEventListener('change', () => {
-    row.querySelector('.manual-player-field').classList.toggle('hidden', picker.value !== 'manual');
-  });
+  const row = document.createElement('div');
+  row.className = 'scorer-row';
+  row.innerHTML = `<select class="scorer-player" aria-label="Registered player">${optionSource.innerHTML}</select>
+    <input class="scorer-goals" type="number" min="1" step="1" value="1" aria-label="Goals scored" />
+    <button type="button" class="danger-btn remove-scorer-btn" aria-label="Remove scorer">Remove</button>`;
+  list.insertBefore(row, optionSource);
+  row.querySelector('.remove-scorer-btn').addEventListener('click', () => row.remove());
 }
 
 function validMatchDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value || '') ? value : '';
 }
 
-function validMatchTime(value) {
-  return /^\d{2}:\d{2}$/.test(value || '') ? value : '';
-}
-
 function matchDateReached(value) {
   const date = validMatchDate(value);
-  const today = new Date();
-  const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const todayString = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Nairobi',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
   return Boolean(date && date <= todayString);
 }
 
@@ -520,66 +543,377 @@ async function removeFixture(id, button) {
   await refreshDashboard();
 }
 
-async function saveFixtureDate(id, button) {
-  const input = document.querySelector(`[data-fixture-date="${CSS.escape(id)}"]`);
-  const timeInput = document.querySelector(`[data-fixture-time="${CSS.escape(id)}"]`);
+async function addStadium(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const input = form.querySelector('#newStadiumName');
+  const name = input.value.trim();
+  if (!name) return;
+  const button = form.querySelector('button[type="submit"]');
   button.disabled = true;
-  const { error } = await supabaseClient
-    .from('football_fixtures')
-    .update({ match_date: input.value, match_time: timeInput.value })
-    .eq('id', id);
-  if (error) {
+  let saved = false;
+  try {
+    const { error } = await supabaseClient.from('stadiums').insert({ name });
+    if (error) {
+      setDashboardMessage(error.code === '23505'
+        ? 'A stadium with that name already exists.'
+        : `Could not add stadium: ${error.message}`, true);
+      return;
+    }
+    saved = true;
+    form.reset();
+    setDashboardMessage('Stadium added.');
+    await refreshDashboard();
+  } catch (error) {
+    setDashboardMessage(saved
+      ? `Stadium added, but the dashboard could not refresh: ${error.message}`
+      : `Could not add stadium: ${error.message}`, true);
+  } finally {
     button.disabled = false;
-    setDashboardMessage(`Could not save match date: ${error.message}`, true);
+  }
+}
+
+async function addReferee(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const input = form.querySelector('#newRefereeName');
+  const name = input.value.trim();
+  if (!name) return;
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  let saved = false;
+  try {
+    const { error } = await supabaseClient.from('referees').insert({ name });
+    if (error) {
+      setDashboardMessage(error.code === '23505'
+        ? 'A referee with that name already exists.'
+        : `Could not add referee: ${error.message}`, true);
+      return;
+    }
+    saved = true;
+    form.reset();
+    setDashboardMessage('Referee added.');
+    await refreshDashboard();
+  } catch (error) {
+    setDashboardMessage(saved
+      ? `Referee added, but the dashboard could not refresh: ${error.message}`
+      : `Could not add referee: ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function removeStadium(id) {
+  if (!window.confirm('Remove this stadium? Fixtures using it will keep their schedules but no longer have a venue assigned.')) return;
+  const { error } = await supabaseClient.from('stadiums').delete().eq('id', id);
+  if (error) {
+    setDashboardMessage(`Could not remove stadium: ${error.message}`, true);
     return;
   }
-  setDashboardMessage('Match date saved.');
+  setDashboardMessage('Stadium removed.');
   await refreshDashboard();
 }
 
-async function saveFixtureSideResult(id, side, button) {
-  const scoreInput = document.querySelector(`[data-side-score="${CSS.escape(`${id}-${side}`)}"]`);
-  const scoreText = scoreInput.value;
-  if (scoreText === '' || !Number.isInteger(Number(scoreText)) || Number(scoreText) < 0) {
-    setDashboardMessage(`Enter a non-negative whole-number score for ${side}.`, true);
+async function removeReferee(id) {
+  if (!window.confirm('Remove this referee? Fixtures using this referee will no longer have one assigned.')) return;
+  const { error } = await supabaseClient.from('referees').delete().eq('id', id);
+  if (error) {
+    setDashboardMessage(`Could not remove referee: ${error.message}`, true);
     return;
   }
-  const score = Number(scoreText);
-  const sideScorers = collectScorers(id, side, score);
-  if (!sideScorers) return;
-  const sideAssists = collectAssists(id, side, sideScorers);
-  if (!sideAssists) return;
+  setDashboardMessage('Referee removed.');
+  await refreshDashboard();
+}
 
-  button.disabled = true;
-  const { data: fixture, error: loadError } = await supabaseClient
-    .from('football_fixtures')
-    .select('home_score, away_score, match_status, scorers, assists')
-    .eq('id', id)
-    .single();
-  if (loadError) {
-    button.disabled = false;
-    setDashboardMessage(`Could not load current match data: ${loadError.message}`, true);
+function fixtureGroupKey(team) {
+  return JSON.stringify([team.gender, team.group_name.trim().toUpperCase()]);
+}
+
+function populateGenerateFixturesGroups(teams) {
+  const select = document.getElementById('generateFixturesGroups');
+  const currentValues = Array.from(select.selectedOptions).map(opt => opt.value);
+  const groups = new Map();
+  teams.filter(team => team.activity === 'Football' && team.gender && team.group_name?.trim())
+    .forEach(team => groups.set(fixtureGroupKey(team), {
+      gender: team.gender,
+      group: team.group_name.trim(),
+    }));
+  select.innerHTML = `<option value="">Select groups</option>${[...groups.entries()]
+    .sort(([, a], [, b]) => a.gender.localeCompare(b.gender) || a.group.localeCompare(b.group))
+    .map(([key, group]) => `<option value="${escapeHtml(key)}">${escapeHtml(`${group.gender} — Group ${group.group}`)}</option>`)
+    .join('')}`;
+  currentValues.forEach(value => {
+    if (groups.has(value)) {
+      const option = select.querySelector(`option[value="${CSS.escape(value)}"]`);
+      if (option) option.selected = true;
+    }
+  });
+}
+
+async function generateRoundRobinFixtures(event) {
+  const button = event.currentTarget;
+  const select = document.getElementById('generateFixturesGroups');
+  const selectedValues = Array.from(select.selectedOptions).map(opt => opt.value);
+  
+  if (selectedValues.length === 0 || selectedValues[0] === '') {
+    setDashboardMessage('Select at least one group to generate fixtures for.', true);
     return;
   }
-  const opponentSide = side === 'home' ? 'away' : 'home';
-  const opponentScore = fixture[`${opponentSide}_score`];
-  const scorers = fixture.scorers || { home: [], away: [] };
-  const assists = fixture.assists || { home: [], away: [] };
-  scorers[side] = sideScorers;
-  assists[side] = sideAssists;
-  const update = {
-    [`${side}_score`]: score,
-    scorers,
-    assists,
-    match_status: opponentScore !== null && opponentScore !== undefined ? 'played' : fixture.match_status,
-  };
-  const { error } = await supabaseClient.from('football_fixtures').update(update).eq('id', id);
+  
+  const selectedGroups = selectedValues.map(value => {
+    try {
+      const [gender, groupName] = JSON.parse(value);
+      return { gender, groupName };
+    } catch {
+      return null;
+    }
+  }).filter(Boolean);
+  
+  if (!window.confirm(`Generate round-robin fixtures for ${selectedGroups.length} group(s)? This will create all unique matchups for Round 1.`)) return;
+  
+  button.disabled = true;
+  try {
+    let fixturesCreated = 0;
+    let fixturesSkipped = 0;
+    
+    for (const { gender, groupName } of selectedGroups) {
+      const groupTeams = adminTeams.filter(team =>
+        team.activity === 'Football'
+        && team.gender === gender
+        && team.group_name?.trim().toUpperCase() === groupName.toUpperCase()
+      );
+      
+      if (groupTeams.length < 2) {
+        setDashboardMessage(`Group ${gender} — ${groupName} has fewer than 2 teams. Skipping.`, true);
+        continue;
+      }
+      
+      const fixturesToInsert = [];
+      for (let i = 0; i < groupTeams.length; i++) {
+        for (let j = i + 1; j < groupTeams.length; j++) {
+          fixturesToInsert.push({
+            gender,
+            group_name: groupName.trim(),
+            match_round: 1,
+            home_team_id: groupTeams[i].id,
+            away_team_id: groupTeams[j].id,
+          });
+        }
+      }
+      
+      if (fixturesToInsert.length === 0) continue;
+      
+      const { data, error } = await supabaseClient
+        .from('football_fixtures')
+        .insert(fixturesToInsert)
+        .select('id');
+      
+      if (error) {
+        if (error.code === '23505') {
+          setDashboardMessage(`Some fixtures for Group ${gender} — ${groupName} already exist. Partial creation may have occurred.`, true);
+          fixturesSkipped += fixturesToInsert.length;
+        } else {
+          setDashboardMessage(`Could not generate fixtures for Group ${gender} — ${groupName}: ${error.message}`, true);
+        }
+      } else {
+        fixturesCreated += data?.length || fixturesToInsert.length;
+      }
+    }
+    
+    if (fixturesCreated > 0) {
+      setDashboardMessage(`${fixturesCreated} round-robin fixture(s) generated. Set their dates, times, stadiums, and referees in the schedule column.`);
+      select.value = '';
+      await refreshDashboard();
+    } else if (fixturesSkipped > 0) {
+      setDashboardMessage('No new fixtures were created (may already exist).', true);
+    }
+  } catch (error) {
+    setDashboardMessage(`Could not generate fixtures: ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function populateFixtureGroupOptions(teams) {
+  const select = document.getElementById('newFixtureGroup');
+  const currentValue = select.value;
+  const groups = new Map();
+  teams.filter(team => team.activity === 'Football' && team.gender && team.group_name?.trim())
+    .forEach(team => groups.set(fixtureGroupKey(team), {
+      gender: team.gender,
+      group: team.group_name.trim(),
+    }));
+  select.innerHTML = `<option value="">Select group</option>${[...groups.entries()]
+    .sort(([, a], [, b]) => a.gender.localeCompare(b.gender) || a.group.localeCompare(b.group))
+    .map(([key, group]) => `<option value="${escapeHtml(key)}">${escapeHtml(`${group.gender} — Group ${group.group}`)}</option>`)
+    .join('')}`;
+  if (groups.has(currentValue)) select.value = currentValue;
+  updateFixtureTeamOptions();
+}
+
+function updateFixtureTeamOptions() {
+  const groupSelect = document.getElementById('newFixtureGroup');
+  const selectedKey = groupSelect.value;
+  let selectedGroup;
+  try {
+    selectedGroup = JSON.parse(selectedKey);
+  } catch {
+    selectedGroup = null;
+  }
+  const groupTeams = selectedGroup
+    ? adminTeams.filter(team => team.activity === 'Football'
+      && team.gender === selectedGroup[0]
+      && team.group_name?.trim().toUpperCase() === selectedGroup[1])
+    : [];
+  const homeSelect = document.getElementById('newFixtureHome');
+  const awaySelect = document.getElementById('newFixtureAway');
+  const homeValue = homeSelect.value;
+  const awayValue = awaySelect.value;
+  const optionsFor = (label, excludedValue) => `<option value="">Select ${label} team</option>${groupTeams
+    .filter(team => team.id !== excludedValue)
+    .map(team => `<option value="${escapeHtml(team.id)}">${escapeHtml(team.team_name)}</option>`)
+    .join('')}`;
+  homeSelect.innerHTML = optionsFor('home', awayValue);
+  awaySelect.innerHTML = optionsFor('away', homeValue);
+  homeSelect.disabled = groupTeams.length < 2;
+  awaySelect.disabled = groupTeams.length < 2;
+  if (groupTeams.some(team => team.id === homeValue) && homeValue !== awayValue) homeSelect.value = homeValue;
+  if (groupTeams.some(team => team.id === awayValue) && awayValue !== homeValue) awaySelect.value = awayValue;
+}
+
+async function addFixture(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  let group;
+  try {
+    group = JSON.parse(document.getElementById('newFixtureGroup').value || 'null');
+  } catch {
+    group = null;
+  }
+  const homeTeamId = document.getElementById('newFixtureHome').value;
+  const awayTeamId = document.getElementById('newFixtureAway').value;
+  const matchRound = Number(document.getElementById('newFixtureRound').value);
+  if (!group || !homeTeamId || !awayTeamId || homeTeamId === awayTeamId
+      || !Number.isInteger(matchRound) || matchRound < 1) {
+    setDashboardMessage('Select a group, a positive whole-number round, and two different teams for the fixture.', true);
+    return;
+  }
+  const homeTeam = adminTeams.find(team => team.id === homeTeamId);
+  const awayTeam = adminTeams.find(team => team.id === awayTeamId);
+  if (!homeTeam || !awayTeam || fixtureGroupKey(homeTeam) !== fixtureGroupKey(awayTeam)
+      || fixtureGroupKey(homeTeam) !== JSON.stringify(group)) {
+    setDashboardMessage('Choose two teams from the selected group.', true);
+    return;
+  }
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    const { error } = await supabaseClient.from('football_fixtures').insert({
+      gender: group[0],
+      group_name: homeTeam.group_name.trim(),
+      match_round: matchRound,
+      home_team_id: homeTeamId,
+      away_team_id: awayTeamId,
+    });
+    if (error) {
+      setDashboardMessage(error.code === '23505'
+        ? 'That matchup already exists in this round.'
+        : `Could not add fixture: ${error.message}`, true);
+      return;
+    }
+    form.reset();
+    updateFixtureTeamOptions();
+    setDashboardMessage('Fixture added. Set its date, time, stadium, and referee in the schedule column.');
+    await refreshDashboard();
+  } catch (error) {
+    setDashboardMessage(`Could not add fixture: ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function clearUnplayedFixtures(event) {
+  if (!window.confirm('Remove all unplayed fixtures and their saved dates, times, stadiums, and referees? Played matches and results will be kept.')) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  const { error } = await supabaseClient
+    .from('football_fixtures')
+    .delete()
+    .neq('match_status', 'played');
   if (error) {
     button.disabled = false;
-    setDashboardMessage(`Could not save ${side} result: ${error.message}`, true);
+    setDashboardMessage(`Could not clear unplayed fixtures: ${error.message}`, true);
     return;
   }
-  setDashboardMessage(`${side === 'home' ? 'Home' : 'Away'} result saved${opponentScore !== null && opponentScore !== undefined ? ' and match marked played' : '; save the other side to complete the result'}.`);
+  setDashboardMessage('Unplayed fixtures cleared. Played matches and results were kept.');
+  await refreshDashboard();
+}
+
+function validMatchTime(value) {
+  return /^\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(value || '') ? value.slice(0, 5) : '';
+}
+
+async function saveFixtureSchedule(id, button) {
+  const matchDate = document.querySelector(`[data-fixture-date="${CSS.escape(id)}"]`).value;
+  const matchTime = document.querySelector(`[data-fixture-time="${CSS.escape(id)}"]`).value;
+  const stadiumId = document.querySelector(`[data-fixture-stadium="${CSS.escape(id)}"]`).value;
+  const refereeId = document.querySelector(`[data-fixture-referee="${CSS.escape(id)}"]`).value;
+  if (!validMatchDate(matchDate) || !validMatchTime(matchTime) || !stadiumId || !refereeId) {
+    setDashboardMessage('Choose a match date, time, stadium, and referee before saving the schedule.', true);
+    return;
+  }
+  button.disabled = true;
+  const { error } = await supabaseClient
+    .from('football_fixtures')
+    .update({
+      match_date: matchDate,
+      match_time: matchTime,
+      stadium_id: stadiumId,
+      referee_id: refereeId,
+    })
+    .eq('id', id);
+  if (error) {
+    button.disabled = false;
+    setDashboardMessage(`Could not save match schedule: ${error.message}`, true);
+    return;
+  }
+  setDashboardMessage('Match date, time, stadium, and referee saved.');
+  await refreshDashboard();
+}
+
+async function saveFixtureResult(id, button) {
+  const homeInput = document.querySelector(`[data-home-score="${CSS.escape(id)}"]`);
+  const awayInput = document.querySelector(`[data-away-score="${CSS.escape(id)}"]`);
+  const homeScore = homeInput.value;
+  const awayScore = awayInput.value;
+  if (homeScore === '' || awayScore === '' || !Number.isInteger(Number(homeScore)) || !Number.isInteger(Number(awayScore))
+      || Number(homeScore) < 0 || Number(awayScore) < 0) {
+    setDashboardMessage('Enter a non-negative whole-number score for both teams.', true);
+    return;
+  }
+  const homeScorers = collectScorers(id, 'home', Number(homeScore));
+  const awayScorers = collectScorers(id, 'away', Number(awayScore));
+  if (!homeScorers || !awayScorers) return;
+  const homeAssists = collectAssists(id, 'home', homeScorers);
+  const awayAssists = collectAssists(id, 'away', awayScorers);
+  if (!homeAssists || !awayAssists) return;
+  button.disabled = true;
+  const { error } = await supabaseClient
+    .from('football_fixtures')
+    .update({
+      home_score: Number(homeScore),
+      away_score: Number(awayScore),
+      scorers: { home: homeScorers, away: awayScorers },
+      assists: { home: homeAssists, away: awayAssists },
+      match_status: 'played',
+    })
+    .eq('id', id);
+  if (error) {
+    button.disabled = false;
+    setDashboardMessage(`Could not save match result: ${error.message}`, true);
+    return;
+  }
+  setDashboardMessage('Match result saved and standings updated.');
   await refreshDashboard();
 }
 
@@ -594,25 +928,15 @@ function collectScorers(fixtureId, side, score) {
       const goalsInput = row.querySelector('.scorer-goals');
       const selected = playerInput.selectedOptions[0];
       const count = Number(goalsInput.value);
-      const isManual = playerInput.value === 'manual';
-      const playerName = isManual
-        ? row.querySelector('.manual-player-name').value.trim()
-        : selected?.textContent.trim();
-      if (!playerInput.value && !playerName) continue;
-      if ((!isManual && !playerInput.value) || !playerName || !Number.isInteger(count) || count < 1) {
-        setDashboardMessage('Choose a registered player or enter a player name, then enter a positive whole-number goal count for every scorer row.', true);
+      if (!playerInput.value || !selected || !Number.isInteger(count) || count < 1) {
+        setDashboardMessage('Choose a registered player and enter a positive whole-number goal count for every scorer row.', true);
         return null;
       }
       total += count;
-      const card = document.querySelector(`[data-admin-fixture="${CSS.escape(fixtureId)}"]`);
-      const teamSide = ownGoal ? (side === 'home' ? 'away' : 'home') : side;
-      const teamId = isManual
-        ? card.dataset[`${teamSide}TeamId`]
-        : selected.dataset.teamId;
       records.push({
-        participant_id: isManual ? null : playerInput.value,
-        team_id: teamId,
-        player: playerName,
+        participant_id: playerInput.value,
+        team_id: selected.dataset.teamId,
+        player: selected.textContent,
         goals: count,
         own_goal: ownGoal,
       });
@@ -634,21 +958,15 @@ function collectAssists(fixtureId, side, scorers) {
     const playerInput = row.querySelector('.assist-player');
     const count = Number(row.querySelector('.assist-count').value);
     const selected = playerInput.selectedOptions[0];
-    const isManual = playerInput.value === 'manual';
-    const playerName = isManual
-      ? row.querySelector('.manual-player-name').value.trim()
-      : selected?.textContent.trim();
-    if (!playerInput.value && !playerName) continue;
-    if ((!isManual && !playerInput.value) || !playerName || !Number.isInteger(count) || count < 1) {
-      setDashboardMessage('Choose a registered player or enter a player name, then enter a positive whole-number assist count for every assist row.', true);
+    if (!playerInput.value || !selected || !Number.isInteger(count) || count < 1) {
+      setDashboardMessage('Choose a registered player and enter a positive whole-number assist count for every assist row.', true);
       return null;
     }
     total += count;
-    const card = document.querySelector(`[data-admin-fixture="${CSS.escape(fixtureId)}"]`);
     records.push({
-      participant_id: isManual ? null : playerInput.value,
-      team_id: isManual ? card.dataset[`${side}TeamId`] : selected.dataset.teamId,
-      player: playerName,
+      participant_id: playerInput.value,
+      team_id: selected.dataset.teamId,
+      player: selected.textContent,
       assists: count,
     });
   }
@@ -738,6 +1056,14 @@ function initializeAdmin() {
     }
   });
 
+  document.getElementById('addStadiumForm').addEventListener('submit', addStadium);
+  document.getElementById('addRefereeForm').addEventListener('submit', addReferee);
+  document.getElementById('newFixtureGroup').addEventListener('change', updateFixtureTeamOptions);
+  document.getElementById('newFixtureHome').addEventListener('change', updateFixtureTeamOptions);
+  document.getElementById('newFixtureAway').addEventListener('change', updateFixtureTeamOptions);
+  document.getElementById('addFixtureForm').addEventListener('submit', addFixture);
+  document.getElementById('generateRoundRobinBtn').addEventListener('click', generateRoundRobinFixtures);
+  document.getElementById('clearUnplayedFixturesBtn').addEventListener('click', clearUnplayedFixtures);
   setLoginMessage('Ready to sign in.');
 
   supabaseClient.auth.getSession()
