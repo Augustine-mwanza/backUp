@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin — DeKUT-Comrades App</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="admin-shell">
+      <header class="admin-header">
+        <a class="secondary-btn" href="index.html">← Public website</a>
+        <h1>Comrades App Admin</h1>
+      </header>
+
+      <section id="loginPanel" class="admin-panel">
+        <h2>Administrator sign in</h2>
+        <p>Use an administrator account created in Supabase Authentication.</p>
+        <form id="loginForm" class="login-form">
+          <label>Email<input id="adminEmail" type="email" autocomplete="username" required /></label>
+          <label>Password<input id="adminPassword" type="password" autocomplete="current-password" required /></label>
+          <button id="loginButton" class="primary-btn" type="submit">Sign in</button>
+        </form>
+        <p id="loginMessage" class="admin-message" role="status">Sign-in page is loading. If this message remains, reload the page.</p>
+      </section>
+
+      <section id="dashboard" class="admin-panel hidden">
+        <div class="dashboard-heading">
+          <div><h2>Manage registrations and fixtures</h2><p id="signedInAs"></p></div>
+          <button id="signOutButton" class="secondary-btn">Sign out</button>
+        </div>
+        <h3>Teams and activity registrations</h3>
+        <div id="adminTeams" class="admin-table-wrap"></div>
+        <h3>Football fixtures and results</h3>
+        <div id="adminFixtures" class="admin-table-wrap"></div>
+        <p id="dashboardMessage" class="admin-message" role="status"></p>
+      </section>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script>
+      window.addEventListener('error', event => {
+        document.getElementById('loginMessage').textContent =
+          `Sign-in page error: ${event.message || 'Could not run admin.js.'}`;
+      });
+      window.addEventListener('unhandledrejection', event => {
+        document.getElementById('loginMessage').textContent =
+          `Sign-in request error: ${event.reason?.message || String(event.reason)}`;
+      });
+    </script>
+    <script src="admin.js?v=20261005-2" onerror="document.getElementById('loginMessage').textContent = 'Could not load admin.js. Check that the local web server is serving this folder, then reload.'"></script>
+  </body>
+</html>
