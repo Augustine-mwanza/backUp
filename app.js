@@ -72,12 +72,20 @@ async function loadTeams() {
 async function loadFootballFixtures() {
   const { data, error } = await supabaseClient
     .from('football_fixtures')
-    .select('id, gender, group_name, home_team_id, away_team_id, match_date, match_status, home_score, away_score, scorers, assists')
+    .select('id, gender, group_name, home_team_id, away_team_id, match_date, match_time, match_status, home_score, away_score, scorers, assists')
     .order('gender')
     .order('group_name')
     .order('created_at');
   if (error) throw error;
   state.fixtures = data;
+}
+
+function hasRecordedResult(fixture) {
+  return fixture.match_status !== 'postponed'
+    && fixture.home_score !== null && fixture.home_score !== undefined
+    && fixture.away_score !== null && fixture.away_score !== undefined
+    && Number.isInteger(Number(fixture.home_score)) && Number(fixture.home_score) >= 0
+    && Number.isInteger(Number(fixture.away_score)) && Number(fixture.away_score) >= 0;
 }
 
 function groupStandings() {
@@ -91,9 +99,9 @@ function groupStandings() {
     });
   });
 
-  state.fixtures.filter(fixture => fixture.match_status === 'played'
-      && Number.isInteger(fixture.home_score) && Number.isInteger(fixture.away_score))
-    .forEach(fixture => {
+  state.fixtures.filter(hasRecordedResult).forEach(fixture => {
+      const homeScore = Number(fixture.home_score);
+      const awayScore = Number(fixture.away_score);
       const key = `${fixture.gender}|${fixture.group_name.trim().toUpperCase()}`;
       const group = groups.get(key);
       const home = group?.teams.get(fixture.home_team_id);
@@ -101,13 +109,13 @@ function groupStandings() {
       if (!home || !away) return;
       home.played += 1;
       away.played += 1;
-      home.goalsFor += fixture.home_score;
-      home.goalsAgainst += fixture.away_score;
-      away.goalsFor += fixture.away_score;
-      away.goalsAgainst += fixture.home_score;
-      if (fixture.home_score > fixture.away_score) {
+      home.goalsFor += homeScore;
+      home.goalsAgainst += awayScore;
+      away.goalsFor += awayScore;
+      away.goalsAgainst += homeScore;
+      if (homeScore > awayScore) {
         home.won += 1; home.points += 3; away.lost += 1;
-      } else if (fixture.home_score < fixture.away_score) {
+      } else if (homeScore < awayScore) {
         away.won += 1; away.points += 3; home.lost += 1;
       } else {
         home.drawn += 1; away.drawn += 1; home.points += 1; away.points += 1;
@@ -164,9 +172,11 @@ function scorerRankings() {
       if (!Array.isArray(records)) return;
       records.forEach(record => {
         const goals = Number(record?.goals);
-        if (!record || record.own_goal === true || record.participant_id == null
-            || !record.player?.trim() || !Number.isInteger(goals) || goals < 1) return;
-        const id = String(record.participant_id);
+        if (!record || record.own_goal === true || !record.player?.trim()
+            || !Number.isInteger(goals) || goals < 1) return;
+        const id = record.participant_id != null
+          ? `player:${record.participant_id}`
+          : `manual:${record.team_id}:${record.player.trim().toLowerCase()}`;
         const current = players.get(id) || {
           id,
           name: record.player.trim(),
@@ -201,15 +211,17 @@ function assistRankings() {
     ['home', 'away'].forEach(side => {
       const records = fixture.assists?.[side];
       if (!Array.isArray(records)) return;
-      records.filter(record => record && record.participant_id
-          && String(record.team_id) === String(fixture[`${side}_team_id`])
-          && record.player && Number.isInteger(record.assists) && record.assists > 0)
-        .forEach(record => {
-          const id = String(record.participant_id);
-          const current = players.get(id) || { id, name: record.player, assists: 0 };
-          current.assists += record.assists;
-          players.set(id, current);
-        });
+      records.forEach(record => {
+        const assists = Number(record?.assists);
+        if (!record || String(record.team_id) !== String(fixture[`${side}_team_id`])
+            || !record.player?.trim() || !Number.isInteger(assists) || assists < 1) return;
+        const id = record.participant_id != null
+          ? `player:${record.participant_id}`
+          : `manual:${record.team_id}:${record.player.trim().toLowerCase()}`;
+        const current = players.get(id) || { id, name: record.player.trim(), assists: 0 };
+        current.assists += assists;
+        players.set(id, current);
+      });
     });
   });
   return [...players.values()].sort((a, b) =>
@@ -255,13 +267,13 @@ function renderPublicFixtures() {
         <tbody>${fixtures.map(fixture => {
           const homeName = teamsById.get(fixture.home_team_id)?.team_name || 'Team removed';
           const awayName = teamsById.get(fixture.away_team_id)?.team_name || 'Team removed';
-          const result = fixture.match_status === 'played'
+          const result = hasRecordedResult(fixture)
             ? `${fixture.home_score}–${fixture.away_score}`
             : fixture.match_status === 'postponed' ? 'Postponed' : 'Scheduled';
           return `<tr>
             <td>${escapeHtml(homeName)}</td>
             <td>${escapeHtml(awayName)}</td>
-            <td>${escapeHtml(fixture.match_date || 'Not scheduled')}</td>
+            <td>${escapeHtml([fixture.match_date, fixture.match_time].filter(Boolean).join(' ') || 'Not scheduled')}</td>
             <td>${escapeHtml(result)}</td>
           </tr>`;
         }).join('')}</tbody>
@@ -275,8 +287,8 @@ function scorerSummary(scorers, side, scoringTeamId, opposingTeamId) {
   if (!Array.isArray(names) || !names.length) return '—';
   return names.map(record => {
     const expectedTeamId = record?.own_goal ? opposingTeamId : scoringTeamId;
-    if (!record?.player || !record.participant_id || String(record.team_id) !== String(expectedTeamId)
-        || !Number.isInteger(record.goals) || record.goals < 1) return '';
+    if (!record?.player || String(record.team_id) !== String(expectedTeamId)
+        || !Number.isInteger(Number(record.goals)) || Number(record.goals) < 1) return '';
     return `${escapeHtml(record.player)}${record.own_goal ? ' (OG)' : ''}${record.goals > 1 ? ` ×${record.goals}` : ''}`;
   }).filter(Boolean).join(', ') || '—';
 }
@@ -540,6 +552,7 @@ function bindUI() {
     closeMenu(activityDetail);
     openMenu(activityMenu);
   });
+  document.getElementById('refreshPublicDataBtn').addEventListener('click', refreshPublicData);
   document.querySelectorAll('[data-close]').forEach(button => {
     button.addEventListener('click', () => closeMenu(document.getElementById(button.dataset.close)));
   });
@@ -550,6 +563,7 @@ async function initialize() {
   window.setInterval(updateTimeLabel, 60_000);
   bindUI();
   window.addEventListener('focus', refreshPublicData);
+  window.setInterval(refreshPublicData, 60_000);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) refreshPublicData();
   });

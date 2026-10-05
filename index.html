@@ -27,7 +27,10 @@
           <button id="openActivitiesBtn" class="activity-btn">Activities</button>
         </section>
         <section id="standingsSection" class="standings-section" aria-live="polite">
-          <h2>Football Group Standings</h2>
+          <div class="public-section-heading">
+            <h2>Football Group Standings</h2>
+            <button id="refreshPublicDataBtn" type="button" class="secondary-btn">Refresh results</button>
+          </div>
           <div id="standingsContainer"><p class="empty-state">Loading group standings…</p></div>
         </section>
         <section id="publicFixturesSection" class="standings-section" aria-live="polite">
@@ -100,6 +103,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20261005-4"></script>
+    <script src="app.js?v=20261005-8"></script>
   </body>
 </html>

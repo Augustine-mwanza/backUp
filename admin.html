@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Admin — DeKUT-Comrades App</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=admin-20261005-3" />
   </head>
-  <body>
+  <body class="admin-page">
     <main class="admin-shell">
       <header class="admin-header">
         <a class="secondary-btn" href="index.html">← Public website</a>
@@ -48,6 +48,6 @@
           `Sign-in request error: ${event.reason?.message || String(event.reason)}`;
       });
     </script>
-    <script src="admin.js?v=20261005-2" onerror="document.getElementById('loginMessage').textContent = 'Could not load admin.js. Check that the local web server is serving this folder, then reload.'"></script>
+    <script src="admin.js?v=20261005-9" onerror="document.getElementById('loginMessage').textContent = 'Could not load admin.js. Check that the local web server is serving this folder, then reload.'"></script>
   </body>
 </html>

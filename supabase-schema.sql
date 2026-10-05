@@ -26,12 +26,14 @@ create table if not exists public.football_fixtures (
   home_team_id uuid not null references public.teams(id) on delete cascade,
   away_team_id uuid not null references public.teams(id) on delete cascade,
   match_date text not null default '',
+  match_time text not null default '',
   created_at timestamptz not null default now(),
   constraint football_fixtures_distinct_teams check (home_team_id <> away_team_id),
   constraint football_fixtures_unique_pair unique (gender, group_name, home_team_id, away_team_id)
 );
 
 alter table public.football_fixtures
+  add column if not exists match_time text not null default '',
   add column if not exists match_status text not null default 'scheduled'
     check (match_status in ('scheduled', 'postponed', 'played')),
   add column if not exists home_score integer check (home_score is null or home_score >= 0),
@@ -255,7 +257,7 @@ revoke all on public.teams, public.registration_participants,
 grant select on public.teams, public.football_fixtures to anon, authenticated;
 grant delete on public.teams to authenticated;
 grant select on public.registration_participants to authenticated;
-grant update (match_date, match_status, home_score, away_score, scorers, assists) on public.football_fixtures to authenticated;
+grant update (match_date, match_time, match_status, home_score, away_score, scorers, assists) on public.football_fixtures to authenticated;
 grant delete on public.football_fixtures to authenticated;
 revoke all on public.app_admins from anon, authenticated;
 
