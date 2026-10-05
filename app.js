@@ -52,6 +52,10 @@ function updateTimeLabel() {
   document.getElementById('timeDisplay').textContent = `Good ${greeting}!`;
 }
 
+function normalizeGroupName(value) {
+  return String(value ?? '').trim().replace(/^group\s+/i, '').trim();
+}
+
 function openMenu(menu) {
   menu.classList.remove('hidden');
 }
@@ -99,8 +103,9 @@ function formatMatchTime(value) {
 function groupStandings() {
   const groups = new Map();
   state.teams.filter(team => team.activity === 'Football' && team.group_name?.trim()).forEach(team => {
-    const key = `${team.gender}|${team.group_name.trim().toUpperCase()}`;
-    if (!groups.has(key)) groups.set(key, { gender: team.gender, group: team.group_name, teams: new Map() });
+    const groupName = normalizeGroupName(team.group_name);
+    const key = `${team.gender}|${groupName.toUpperCase()}`;
+    if (!groups.has(key)) groups.set(key, { gender: team.gender, group: groupName, teams: new Map() });
     groups.get(key).teams.set(team.id, {
       id: team.id, name: team.team_name, played: 0, won: 0, drawn: 0, lost: 0,
       goalsFor: 0, goalsAgainst: 0, points: 0,
@@ -110,7 +115,8 @@ function groupStandings() {
   state.fixtures.filter(fixture => fixture.match_status === 'played'
       && Number.isInteger(fixture.home_score) && Number.isInteger(fixture.away_score))
     .forEach(fixture => {
-      const key = `${fixture.gender}|${fixture.group_name.trim().toUpperCase()}`;
+      const groupName = normalizeGroupName(fixture.group_name);
+      const key = `${fixture.gender}|${groupName.toUpperCase()}`;
       const group = groups.get(key);
       const home = group?.teams.get(fixture.home_team_id);
       const away = group?.teams.get(fixture.away_team_id);
@@ -263,7 +269,8 @@ function renderPublicFixtures() {
   const refereesById = new Map(state.referees.map(referee => [referee.id, referee]));
   const fixturesByGroup = new Map();
   state.fixtures.forEach(fixture => {
-    const groupKey = `${fixture.gender}|${fixture.group_name}`;
+    const groupName = normalizeGroupName(fixture.group_name);
+    const groupKey = `${fixture.gender}|${groupName.toUpperCase()}`;
     const fixtures = fixturesByGroup.get(groupKey) || [];
     fixtures.push(fixture);
     fixturesByGroup.set(groupKey, fixtures);
@@ -275,7 +282,8 @@ function renderPublicFixtures() {
   }
 
   container.innerHTML = `<div class="group-cards-grid">${[...fixturesByGroup.entries()].map(([key, fixtures]) => {
-    const [gender, group] = key.split('|');
+    const [gender] = key.split('|');
+    const group = normalizeGroupName(fixtures[0].group_name);
     return `<section class="match-group-card">
       <h3>${escapeHtml(gender)} — Group ${escapeHtml(group)}</h3>
       <div class="table-wrap"><table class="match-table">
@@ -323,7 +331,7 @@ function teamListMarkup(activity) {
   return `
     <details class="registered-teams">
       <summary>View saved registrations (${teams.length})</summary>
-      <ul>${teams.map(team => `<li><strong>${escapeHtml(team.team_name)}</strong>${team.group_name ? ` — Group ${escapeHtml(team.group_name)}` : ''}${team.gender ? ` — ${escapeHtml(team.gender)}` : ''}</li>`).join('')}</ul>
+      <ul>${teams.map(team => `<li><strong>${escapeHtml(team.team_name)}</strong>${normalizeGroupName(team.group_name) ? ` — Group ${escapeHtml(normalizeGroupName(team.group_name))}` : ''}${team.gender ? ` — ${escapeHtml(team.gender)}` : ''}</li>`).join('')}</ul>
     </details>
   `;
 }
@@ -449,7 +457,7 @@ function readForm() {
     team_name: document.getElementById('teamName').value.trim(),
     gender: document.getElementById('gender')?.value || null,
     coach: document.getElementById('coachName').value.trim(),
-    group_name: document.getElementById('groupName')?.value.trim() || '',
+    group_name: normalizeGroupName(document.getElementById('groupName')?.value),
     participants,
   };
 }
@@ -549,7 +557,7 @@ async function openMatchModal() {
     const teamsById = new Map(state.teams.map(team => [team.id, team]));
     const groups = new Map();
     state.fixtures.forEach(fixture => {
-      const key = `${fixture.gender}|${fixture.group_name}`;
+      const key = `${fixture.gender}|${normalizeGroupName(fixture.group_name).toUpperCase()}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(fixture);
     });
@@ -558,7 +566,8 @@ async function openMatchModal() {
       return;
     }
     matchContainer.innerHTML = [...groups.entries()].map(([key, rows]) => {
-      const [gender, group] = key.split('|');
+      const [gender] = key.split('|');
+      const group = normalizeGroupName(rows[0].group_name);
       return `<section class="match-group-card"><h3>${escapeHtml(gender)} — Group ${escapeHtml(group)}</h3>
         <table class="match-table"><thead><tr><th>Home Team</th><th>Away Team</th><th>Date</th><th>Result / status</th><th>Goalscorers</th></tr></thead><tbody>
         ${rows.map(fixture => {

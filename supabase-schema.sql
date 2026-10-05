@@ -1,5 +1,14 @@
 create extension if not exists pgcrypto;
 
+create or replace function public.normalize_group_name(group_name text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select btrim(regexp_replace(btrim(coalesce(group_name, '')), '^group[[:space:]]+', '', 'i'));
+$$;
+
 create table if not exists public.teams (
   id uuid primary key default gen_random_uuid(),
   activity text not null check (activity in (
@@ -77,7 +86,7 @@ drop index if exists public.football_fixtures_group_pair_unique;
 create unique index football_fixtures_group_pair_round_unique
   on public.football_fixtures (
     gender,
-    upper(btrim(group_name)),
+    upper(public.normalize_group_name(group_name)),
     least(home_team_id, away_team_id),
     greatest(home_team_id, away_team_id),
     match_round
@@ -99,8 +108,8 @@ begin
       and away_team.activity = 'Football'
       and home_team.gender = new.gender
       and away_team.gender = new.gender
-      and upper(btrim(home_team.group_name)) = upper(btrim(new.group_name))
-      and upper(btrim(away_team.group_name)) = upper(btrim(new.group_name))
+      and upper(public.normalize_group_name(home_team.group_name)) = upper(public.normalize_group_name(new.group_name))
+      and upper(public.normalize_group_name(away_team.group_name)) = upper(public.normalize_group_name(new.group_name))
   ) then
     raise exception 'Fixture teams must be football teams in the fixture group and gender';
   end if;
@@ -185,12 +194,12 @@ declare
 begin
   if new.activity = 'Football' and length(btrim(new.group_name)) > 0 then
     target_gender := new.gender;
-    target_group := upper(btrim(new.group_name));
+    target_group := upper(public.normalize_group_name(new.group_name));
     perform pg_advisory_xact_lock(hashtextextended(target_gender || '|' || target_group, 0));
 
     delete from public.football_fixtures
     where (home_team_id = new.id or away_team_id = new.id)
-      and not (gender = target_gender and upper(btrim(group_name)) = target_group);
+      and not (gender = target_gender and upper(public.normalize_group_name(group_name)) = target_group);
 
   else
     delete from public.football_fixtures

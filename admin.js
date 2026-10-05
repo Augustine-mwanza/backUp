@@ -23,6 +23,10 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;');
 }
 
+function normalizeGroupName(value) {
+  return String(value ?? '').trim().replace(/^group\s+/i, '').trim();
+}
+
 function setLoginMessage(message, isError = false) {
   const element = document.getElementById('loginMessage');
   element.textContent = message;
@@ -72,7 +76,7 @@ async function refreshDashboard() {
         return `<tr>
           <td>${escapeHtml(team.activity)}</td>
           <td>${escapeHtml(team.team_name)}</td>
-          <td>${escapeHtml([team.gender, team.group_name ? `Group ${team.group_name}` : ''].filter(Boolean).join(' / '))}</td>
+          <td>${escapeHtml([team.gender, normalizeGroupName(team.group_name) ? `Group ${normalizeGroupName(team.group_name)}` : ''].filter(Boolean).join(' / '))}</td>
           <td>${escapeHtml(team.coach)}</td>
           <td>${people.length ? `<details><summary>${people.length} participant(s)</summary><pre>${escapeHtml(JSON.stringify(people, null, 2))}</pre></details>` : '—'}</td>
           <td class="table-actions">
@@ -245,7 +249,7 @@ function openTeamEditDialog(team, people, participantsByTeam, teamsById) {
             </label>
             <label>
               Group name
-              <input type="text" value="${escapeHtml(team.group_name)}" data-edit-group-name />
+              <input type="text" value="${escapeHtml(normalizeGroupName(team.group_name))}" data-edit-group-name />
             </label>
           ` : `
             <label>
@@ -258,7 +262,7 @@ function openTeamEditDialog(team, people, participantsByTeam, teamsById) {
             </label>
             <label>
               Group name
-              <input type="text" value="${escapeHtml(team.group_name)}" data-edit-group-name />
+              <input type="text" value="${escapeHtml(normalizeGroupName(team.group_name))}" data-edit-group-name />
             </label>
           `}
         </div>
@@ -305,7 +309,7 @@ function openTeamEditDialog(team, people, participantsByTeam, teamsById) {
     const teamName = modal.querySelector('[data-edit-team-name]').value.trim();
     const coach = modal.querySelector('[data-edit-coach]').value.trim();
     const genderValue = modal.querySelector('[data-edit-gender]').value;
-    const groupValue = modal.querySelector('[data-edit-group-name]').value.trim();
+    const groupValue = normalizeGroupName(modal.querySelector('[data-edit-group-name]').value);
     if (!teamName) {
       setDashboardMessage('Enter a team name before saving changes.', true);
       return;
@@ -644,7 +648,7 @@ async function removeReferee(id) {
 }
 
 function fixtureGroupKey(team) {
-  return JSON.stringify([team.gender, team.group_name.trim().toUpperCase()]);
+  return JSON.stringify([team.gender, normalizeGroupName(team.group_name).toUpperCase()]);
 }
 
 function populateGenerateFixturesGroups(teams) {
@@ -654,7 +658,7 @@ function populateGenerateFixturesGroups(teams) {
   teams.filter(team => team.activity === 'Football' && team.gender && team.group_name?.trim())
     .forEach(team => groups.set(fixtureGroupKey(team), {
       gender: team.gender,
-      group: team.group_name.trim(),
+      group: normalizeGroupName(team.group_name),
     }));
   select.innerHTML = `<option value="">Select groups</option>${[...groups.entries()]
     .sort(([, a], [, b]) => a.gender.localeCompare(b.gender) || a.group.localeCompare(b.group))
@@ -698,7 +702,7 @@ async function generateRoundRobinFixtures(event) {
       const groupTeams = adminTeams.filter(team =>
         team.activity === 'Football'
         && team.gender === gender
-        && team.group_name?.trim().toUpperCase() === groupName.toUpperCase()
+        && normalizeGroupName(team.group_name).toUpperCase() === normalizeGroupName(groupName).toUpperCase()
       );
       
       if (groupTeams.length < 2) {
@@ -711,7 +715,7 @@ async function generateRoundRobinFixtures(event) {
         for (let j = i + 1; j < groupTeams.length; j++) {
           fixturesToInsert.push({
             gender,
-            group_name: groupName.trim(),
+            group_name: normalizeGroupName(groupName),
             match_round: 1,
             home_team_id: groupTeams[i].id,
             away_team_id: groupTeams[j].id,
@@ -781,7 +785,7 @@ function updateFixtureTeamOptions() {
   const groupTeams = selectedGroup
     ? adminTeams.filter(team => team.activity === 'Football'
       && team.gender === selectedGroup[0]
-      && team.group_name?.trim().toUpperCase() === selectedGroup[1])
+      && normalizeGroupName(team.group_name).toUpperCase() === normalizeGroupName(selectedGroup[1]).toUpperCase())
     : [];
   const homeSelect = document.getElementById('newFixtureHome');
   const awaySelect = document.getElementById('newFixtureAway');
@@ -826,7 +830,7 @@ async function addFixture(event) {
   try {
     const { error } = await supabaseClient.from('football_fixtures').insert({
       gender: group[0],
-      group_name: homeTeam.group_name.trim(),
+      group_name: normalizeGroupName(homeTeam.group_name),
       match_round: 1,
       home_team_id: homeTeamId,
       away_team_id: awayTeamId,
