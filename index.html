@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DeKUT-Comrades App</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div class="greeting-block">
+          <div id="timeDisplay" class="time-display">Good Morning!</div>
+          <div class="welcome-text">Hello! Welcome to Comrades App. Enjoy the services.</div>
+        </div>
+      </header>
+
+      <main class="main-panel">
+        <section id="mainMenu" class="main-menu">
+          <button class="portal-btn" data-url="https://portal.dkut.ac.ke/">Students Portal</button>
+          <button class="portal-btn" data-url="https://catering.dkut.ac.ke/">DeKUT Catering</button>
+          <button class="portal-btn" data-url="https://elearning.dkut.ac.ke/login/index.php">E-Learning</button>
+          <button class="portal-btn" data-url="https://portal.hef.co.ke/auth/signin">Helb Portal</button>
+          <button class="portal-btn" data-url="https://gemini.google.com/app">GeminiAI</button>
+          <button class="portal-btn" data-url="https://chatgpt.com">ChatGPT-AI</button>
+          <button id="openActivitiesBtn" class="activity-btn">Activities</button>
+        </section>
+        <section id="standingsSection" class="standings-section" aria-live="polite">
+          <h2>Football Group Standings</h2>
+          <div id="standingsContainer"><p class="empty-state">Loading group standings…</p></div>
+        </section>
+        <section id="publicFixturesSection" class="standings-section" aria-live="polite">
+          <h2>Football Fixtures</h2>
+          <p>NB: All times are in East Africa Time (EAT) and are in 24-hour format.</p>
+          <div id="publicFixturesContainer"><p class="empty-state">Loading fixtures…</p></div>
+        </section>
+        <section class="standings-section" aria-live="polite">
+          <div class="rankings-grid">
+            <section id="scorerRankingsSection">
+              <h2>Top Goalscorers</h2>
+              <div id="scorerRankingsContainer"><p class="empty-state">Loading goalscorers…</p></div>
+            </section>
+            <section id="assistRankingsSection">
+              <h2>Top Goal Assists</h2>
+              <div id="assistRankingsContainer"><p class="empty-state">Loading assists…</p></div>
+            </section>
+          </div>
+        </section>
+      </main>
+      <p id="connectionStatus" class="connection-status" role="status">Connecting to shared database…</p>
+    </div>
+
+    <div id="activityMenu" class="modal hidden">
+      <div class="modal-card wide-card">
+        <div class="modal-header">
+          <h2>Choose Activity</h2>
+          <button class="modal-close" data-close="activityMenu">×</button>
+        </div>
+        <p class="subheading">Hello! Welcome to the Comrades App. Choose an activity below.</p>
+        <div class="activity-grid">
+          <button class="activity-option" data-activity="Football">Football</button>
+          <button class="activity-option" data-activity="Rugby">Rugby</button>
+          <button class="activity-option" data-activity="Handball">Handball</button>
+          <button class="activity-option" data-activity="Softball">Softball</button>
+          <button class="activity-option" data-activity="Hockey">Hockey</button>
+          <button class="activity-option" data-activity="Drama">Drama</button>
+          <button class="activity-option" data-activity="Volleyball">Volleyball</button>
+          <button class="activity-option" data-activity="Music">Music</button>
+          <button class="activity-option" data-activity="AmericanBall">AmericanBall</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="activityDetail" class="modal hidden">
+      <div class="modal-card activity-card">
+        <div class="modal-header">
+          <button id="backToActivitiesBtn" class="secondary-btn">← Back to Activities</button>
+          <button class="modal-close" data-close="activityDetail">×</button>
+        </div>
+
+        <div id="activityContent"></div>
+      </div>
+    </div>
+
+    <div id="matchModal" class="modal hidden">
+      <div class="modal-card match-card">
+        <div class="modal-header">
+          <h2>Football Group Matches</h2>
+          <button class="modal-close" data-close="matchModal">×</button>
+        </div>
+        <div id="matchContainer" class="match-container"></div>
+        <div class="modal-actions">
+          <button id="saveMatchDatesBtn" class="primary-btn">Save Match Dates</button>
+        </div>
+      </div>
+    </div>
+    <footer class="public-footer">
+      <div class="footer-inner">
+        <p class="footer-credit">&copy; 2026 Developed with Handwork by <span>MUKITI</span></p>
+        <a class="footer-admin-link" href="admin.html">Admin</a>
+      </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script src="app.js?v=20261005-9"></script>
+  </body>
+</html>

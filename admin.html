@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin — DeKUT-Comrades App</title>
+    <link rel="icon" href="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSYYy-XWYDGabka3dztj0_iL7sR1hjzDnEea-grF5hU-w&s=10">
+    <link rel="stylesheet" href="styles.css?v=20261005-7" />
+  </head>
+  <body class="admin-page">
+    <main class="admin-shell">
+      <header class="admin-header">
+        <a class="secondary-btn" href="index.html">← Public website</a>
+        <div class="admin-brand">
+          <span class="admin-eyebrow">ADMINISTRATION</span>
+          <h1>Comrades App</h1>
+        </div>
+      </header>
+
+      <section id="loginPanel" class="admin-panel">
+        <span class="admin-eyebrow">WELCOME BACK</span>
+        <h2>Administrator sign in</h2>
+        <p class="admin-intro">Sign in with an administrator account to manage registrations, fixtures, and results.</p>
+        <form id="loginForm" class="login-form">
+          <label>Email<input id="adminEmail" type="email" autocomplete="username" required /></label>
+          <label>Password<input id="adminPassword" type="password" autocomplete="current-password" required /></label>
+          <button id="loginButton" class="primary-btn" type="submit">Sign in</button>
+        </form>
+        <p id="loginMessage" class="admin-message" role="status">Sign-in page is loading. If this message remains, reload the page.</p>
+      </section>
+
+      <section id="dashboard" class="admin-panel hidden">
+        <div class="dashboard-heading">
+          <div>
+            <span class="admin-eyebrow">ADMIN DASHBOARD</span>
+            <h2>Manage registrations and fixtures</h2>
+            <p id="signedInAs" class="signed-in-as"></p>
+          </div>
+          <button id="signOutButton" class="secondary-btn">Sign out</button>
+        </div>
+        <section class="admin-section" aria-labelledby="teamsHeading">
+          <div class="admin-section-heading">
+            <div><h3 id="teamsHeading">Teams and activity registrations</h3><p>Review, edit, or remove registered teams and participants.</p></div>
+          </div>
+          <div id="adminTeams" class="admin-table-wrap"></div>
+        </section>
+        <section class="admin-section" aria-labelledby="stadiumsHeading">
+          <div class="admin-section-heading">
+            <div><h3 id="stadiumsHeading">Match venues</h3><p>Add the stadiums available for fixture scheduling.</p></div>
+          </div>
+          <form id="addStadiumForm" class="stadium-form">
+            <label for="newStadiumName">Stadium name</label>
+            <input id="newStadiumName" type="text" maxlength="120" placeholder="Enter a stadium or field name" required />
+            <button class="primary-btn" type="submit">Add stadium</button>
+          </form>
+          <div id="adminStadiums" class="admin-table-wrap"></div>
+        </section>
+        <section class="admin-section" aria-labelledby="refereesHeading">
+          <div class="admin-section-heading">
+            <div><h3 id="refereesHeading">Referees</h3><p>Add the referees available to assign to matches.</p></div>
+          </div>
+          <form id="addRefereeForm" class="stadium-form">
+            <label for="newRefereeName">Referee name</label>
+            <input id="newRefereeName" type="text" maxlength="120" placeholder="Enter referee name" required />
+            <button class="primary-btn" type="submit">Add referee</button>
+          </form>
+          <div id="adminReferees" class="admin-table-wrap"></div>
+        </section>
+        <section class="admin-section" aria-labelledby="fixturesHeading">
+          <div class="admin-section-heading">
+            <div><h3 id="fixturesHeading">Football fixtures and results</h3><p>Create the matchups, assign a date, time (Africa/Nairobi), venue, and referee, then enter scores, goalscorers, and assists.</p></div>
+          </div>
+          <div class="fixture-management-actions">
+            <div class="generate-fixtures-form">
+              <p><strong>Generate round-robin fixtures</strong> — Automatically create all unique matchups (every team plays every other team once) for selected groups in Round 1.</p>
+              <div class="generate-fixtures-inputs">
+                <label>Groups to generate<select id="generateFixturesGroups" multiple required><option value="">Select one or more groups</option></select></label>
+                <button id="generateRoundRobinBtn" class="primary-btn" type="button">Generate round-robin fixtures</button>
+              </div>
+            </div>
+          </div>
+          <form id="addFixtureForm" class="manual-fixture-form">
+            <label>Group<select id="newFixtureGroup" required><option value="">Select group</option></select></label>
+            <label>Round<input id="newFixtureRound" type="number" min="1" step="1" value="1" required /></label>
+            <label>Home team<select id="newFixtureHome" required disabled><option value="">Select home team</option></select></label>
+            <label>Away team<select id="newFixtureAway" required disabled><option value="">Select away team</option></select></label>
+            <button class="primary-btn" type="submit">Add fixture</button>
+          </form>
+          <div class="fixture-management-actions">
+            <p>Need to replace the old generated schedule? Clearing removes all unplayed fixtures and their schedule details; played matches and results stay intact.</p>
+            <button id="clearUnplayedFixturesBtn" class="danger-btn" type="button">Clear unplayed fixtures</button>
+          </div>
+          <div id="adminFixtures" class="admin-table-wrap"></div>
+        </section>
+        <p id="dashboardMessage" class="admin-message" role="status"></p>
+      </section>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script>
+      window.addEventListener('error', event => {
+        document.getElementById('loginMessage').textContent =
+          `Sign-in page error: ${event.message || 'Could not run admin.js.'}`;
+      });
+      window.addEventListener('unhandledrejection', event => {
+        document.getElementById('loginMessage').textContent =
+          `Sign-in request error: ${event.reason?.message || String(event.reason)}`;
+      });
+    </script>
+    <script src="admin.js?v=20261005-11" onerror="document.getElementById('loginMessage').textContent = 'Could not load admin.js. Check that the local web server is serving this folder, then reload.'"></script>
+  </body>
+</html>
