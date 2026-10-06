@@ -128,17 +128,17 @@ async function refreshDashboard() {
         <td>${escapeHtml(`${fixture.gender} — ${normalizeGroupName(fixture.group_name)}`)}</td>
         <td>${escapeHtml(homeName)} vs ${escapeHtml(awayName)}</td>
         <td class="fixture-schedule-cell">
-          <label>Date<input class="date-input" type="date" value="${escapeHtml(validMatchDate(fixture.match_date))}" data-fixture-date="${fixture.id}" ${fixture.match_status === 'played' ? 'disabled' : ''} /></label>
-          <label>Time (Africa/Nairobi)<input class="time-input" type="time" value="${escapeHtml(validMatchTime(fixture.match_time))}" data-fixture-time="${fixture.id}" ${fixture.match_status === 'played' ? 'disabled' : ''} /></label>
-          <label>Stadium<select data-fixture-stadium="${fixture.id}" ${fixture.match_status === 'played' ? 'disabled' : ''}>
+          <label>Date<input class="date-input" type="date" value="${escapeHtml(validMatchDate(fixture.match_date))}" data-fixture-date="${fixture.id}" /></label>
+          <label>Time (Africa/Nairobi)<input class="time-input" type="time" value="${escapeHtml(validMatchTime(fixture.match_time))}" data-fixture-time="${fixture.id}" /></label>
+          <label>Pitch / stadium<select data-fixture-stadium="${fixture.id}">
             <option value="">Select stadium</option>
             ${stadiums.map(stadium => `<option value="${escapeHtml(stadium.id)}" ${stadium.id === fixture.stadium_id ? 'selected' : ''}>${escapeHtml(stadium.name)}</option>`).join('')}
           </select></label>
-          <label>Referee<select data-fixture-referee="${fixture.id}" ${fixture.match_status === 'played' ? 'disabled' : ''}>
+          <label>Referee<select data-fixture-referee="${fixture.id}">
             <option value="">Select referee</option>
             ${referees.map(referee => `<option value="${escapeHtml(referee.id)}" ${referee.id === fixture.referee_id ? 'selected' : ''}>${escapeHtml(referee.name)}</option>`).join('')}
           </select></label>
-          ${fixture.match_status !== 'played' ? `<button class="secondary-btn save-date-btn" data-save-schedule="${fixture.id}">Save schedule</button>` : ''}
+          <button class="secondary-btn save-date-btn" data-save-schedule="${fixture.id}">Save schedule</button>
         </td>
         <td>
           <span class="match-status">${escapeHtml(fixture.match_status || 'scheduled')}</span>
@@ -897,7 +897,7 @@ async function saveFixtureSchedule(id, button) {
     setDashboardMessage(`Could not save match schedule: ${error.message}`, true);
     return;
   }
-  setDashboardMessage('Match date, time, stadium, and referee saved.');
+  setDashboardMessage('Match date, time, pitch, and referee saved.');
   await refreshDashboard();
 }
 

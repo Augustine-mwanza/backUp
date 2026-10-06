@@ -130,9 +130,8 @@ as $$
 begin
   if old.match_status = 'played'
       and (new.home_team_id is distinct from old.home_team_id
-        or new.away_team_id is distinct from old.away_team_id
-        or new.referee_id is distinct from old.referee_id) then
-    raise exception 'Played fixture teams and referee cannot be changed';
+        or new.away_team_id is distinct from old.away_team_id) then
+    raise exception 'Played fixture teams cannot be changed';
   end if;
   return new;
 end;
