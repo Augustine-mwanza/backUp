@@ -125,7 +125,7 @@ async function refreshDashboard() {
     const awayPlayers = registeredFootballPlayers(participantsByTeam.get(fixture.away_team_id) || []);
     return `
       <tr>
-        <td>${escapeHtml(`${fixture.gender} — ${fixture.group_name}`)}</td>
+        <td>${escapeHtml(`${fixture.gender} — ${normalizeGroupName(fixture.group_name)}`)}</td>
         <td>${escapeHtml(homeName)} vs ${escapeHtml(awayName)}</td>
         <td class="fixture-schedule-cell">
           <label>Date<input class="date-input" type="date" value="${escapeHtml(validMatchDate(fixture.match_date))}" data-fixture-date="${fixture.id}" ${fixture.match_status === 'played' ? 'disabled' : ''} /></label>

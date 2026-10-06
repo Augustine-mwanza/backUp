@@ -261,7 +261,7 @@ begin
     btrim(p_team_name),
     p_gender,
     left(btrim(coalesce(p_coach, '')), 120),
-    left(btrim(coalesce(p_group_name, '')), 80)
+    left(public.normalize_group_name(p_group_name), 80)
   )
   returning id into new_team_id;
 
