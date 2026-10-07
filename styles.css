@@ -953,7 +953,39 @@ select {
 }
 
 .admin-page #adminFixtures .admin-table {
-  min-width: 1240px;
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.admin-page #adminFixtures .admin-table th:nth-child(1) { width: 15%; }
+.admin-page #adminFixtures .admin-table th:nth-child(2) { width: 16%; }
+.admin-page #adminFixtures .admin-table th:nth-child(3) { width: 25%; }
+.admin-page #adminFixtures .admin-table th:nth-child(4) { width: 29%; }
+.admin-page #adminFixtures .admin-table th:nth-child(5) { width: 15%; }
+
+.admin-page #adminFixtures .admin-table th,
+.admin-page #adminFixtures .admin-table td {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-page #adminFixtures .fixture-schedule-cell {
+  min-width: 0;
+}
+
+.admin-page #adminFixtures .table-actions {
+  min-width: 0;
+}
+
+.admin-page #adminFixtures .fixture-schedule-cell input,
+.admin-page #adminFixtures .fixture-schedule-cell select,
+.admin-page #adminFixtures .scorer-row select,
+.admin-page #adminFixtures .assist-row select,
+.admin-page #adminFixtures .scorer-row input,
+.admin-page #adminFixtures .assist-row input {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .admin-page .admin-table th,
@@ -1055,6 +1087,41 @@ select {
   font-weight: 700;
 }
 
+@media (min-width: 721px) and (max-width: 960px) {
+  .admin-page #adminFixtures .admin-table,
+  .admin-page #adminFixtures .admin-table tbody,
+  .admin-page #adminFixtures .admin-table tr,
+  .admin-page #adminFixtures .admin-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-page #adminFixtures .admin-table thead {
+    display: none;
+  }
+
+  .admin-page #adminFixtures .admin-table tr {
+    padding: 8px;
+    border-bottom: 1px solid #e2eae5;
+  }
+
+  .admin-page #adminFixtures .admin-table td {
+    display: grid;
+    grid-template-columns: minmax(110px, 0.3fr) minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px 4px;
+    border: 0;
+  }
+
+  .admin-page #adminFixtures .admin-table td::before {
+    content: attr(data-label);
+    color: #294c3a;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+}
+
 @media (max-width: 720px) {
   .admin-page .admin-shell {
     padding-top: 16px;
@@ -1077,6 +1144,52 @@ select {
   }
 
   .admin-page .dashboard-heading .secondary-btn {
+    width: 100%;
+  }
+
+  .admin-page #adminFixtures .admin-table,
+  .admin-page #adminFixtures .admin-table tbody,
+  .admin-page #adminFixtures .admin-table tr,
+  .admin-page #adminFixtures .admin-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-page #adminFixtures .admin-table thead {
+    display: none;
+  }
+
+  .admin-page #adminFixtures .admin-table tr {
+    padding: 8px;
+    border-bottom: 1px solid #e2eae5;
+  }
+
+  .admin-page #adminFixtures .admin-table td {
+    display: grid;
+    grid-template-columns: minmax(80px, 0.35fr) minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px 4px;
+    border: 0;
+  }
+
+  .admin-page #adminFixtures .admin-table td::before {
+    content: attr(data-label);
+    color: #294c3a;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .admin-page #adminFixtures .admin-table .fixture-schedule-cell label {
+    min-width: 0;
+  }
+
+  .admin-page #adminFixtures .admin-table .table-actions {
+    display: grid;
+    gap: 8px;
+  }
+
+  .admin-page #adminFixtures .admin-table .table-actions button {
     width: 100%;
   }
 }

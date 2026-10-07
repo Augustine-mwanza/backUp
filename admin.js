@@ -190,9 +190,9 @@ async function refreshDashboard() {
     const awayPlayers = registeredFootballPlayers(participantsByTeam.get(fixture.away_team_id) || []);
     return `
       <tr>
-        <td>${escapeHtml(`${fixture.gender} — ${normalizeGroupName(fixture.group_name)} (Round ${fixture.match_round})`)}</td>
-        <td>${escapeHtml(homeName)} vs ${escapeHtml(awayName)}</td>
-        <td class="fixture-schedule-cell">
+        <td data-label="Group">${escapeHtml(`${fixture.gender} — ${normalizeGroupName(fixture.group_name)} (Round ${fixture.match_round})`)}</td>
+        <td data-label="Teams">${escapeHtml(homeName)} vs ${escapeHtml(awayName)}</td>
+        <td class="fixture-schedule-cell" data-label="Schedule">
           <label>Date<input class="date-input" type="date" value="${escapeHtml(validMatchDate(fixture.match_date))}" data-fixture-date="${fixture.id}" /></label>
           <label>Time (Africa/Nairobi)<input class="time-input" type="time" value="${escapeHtml(validMatchTime(fixture.match_time))}" data-fixture-time="${fixture.id}" /></label>
           <label>Pitch / stadium<select data-fixture-stadium="${fixture.id}">
@@ -205,7 +205,7 @@ async function refreshDashboard() {
           </select></label>
           <button class="secondary-btn save-date-btn" data-save-schedule="${fixture.id}">Save schedule</button>
         </td>
-        <td>
+        <td data-label="Status / result">
           <span class="match-status">${escapeHtml(fixture.match_status || 'scheduled')}</span>
           ${canEditResult ? `<div class="score-inputs">
             <label>${escapeHtml(homeName)}<input type="number" min="0" step="1" value="${fixture.home_score ?? ''}" data-home-score="${fixture.id}" aria-label="${escapeHtml(homeName)} goals" /></label>
@@ -218,7 +218,7 @@ async function refreshDashboard() {
             ${assistEditorMarkup(fixture.id, 'away', awayName, awayPlayers, awayAssists)}
           </div>` : ''}
         </td>
-        <td class="table-actions">
+        <td class="table-actions" data-label="Actions">
           ${canEditResult ? `<button class="primary-btn save-result-btn" data-save-result="${fixture.id}">Save result</button>` : ''}
           ${fixture.match_status === 'postponed'
             ? `<button class="secondary-btn schedule-match-btn" data-schedule-match="${fixture.id}">Mark scheduled</button>`
