@@ -79,6 +79,18 @@
               </div>
             </div>
           </div>
+          <div class="fixture-management-actions">
+            <div class="generate-fixtures-form">
+              <p><strong>Generate knockout fixtures</strong> — Select the teams that qualified from their groups and create the next-stage matchups.</p>
+              <div class="generate-fixtures-inputs">
+                <label>Stage<select id="knockoutStage"><option value="2">Quarter-finals</option><option value="3">Semi-finals</option><option value="4">Final</option></select></label>
+                <label>Gender<select id="knockoutGender"><option value="Men">Men</option><option value="Women">Women</option></select></label>
+                <label>Qualified team 1<select id="knockoutTeamOne" required><option value="">Select a qualified team</option></select></label>
+                <label>Qualified team 2<select id="knockoutTeamTwo" required><option value="">Select a qualified team</option></select></label>
+                <button id="generateKnockoutBtn" class="primary-btn" type="button">Add knockout fixture</button>
+              </div>
+            </div>
+          </div>
           <form id="addFixtureForm" class="manual-fixture-form">
             <label>Group<select id="newFixtureGroup" required><option value="">Select group</option></select></label>
             <label>Home team<select id="newFixtureHome" required disabled><option value="">Select home team</option></select></label>

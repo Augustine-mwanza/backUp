@@ -12,6 +12,7 @@ const ACTIVITY_COLUMNS = {
 
 let supabaseClient;
 let adminTeams = [];
+let currentFixtures = [];
 const loginPanel = document.getElementById('loginPanel');
 const dashboard = document.getElementById('dashboard');
 
@@ -25,6 +26,68 @@ function escapeHtml(value) {
 
 function normalizeGroupName(value) {
   return String(value ?? '').trim().replace(/^group\s+/i, '').trim();
+}
+
+function computeQualifiedTeams(gender = null) {
+  const groups = new Map();
+  adminTeams.filter(team => team.activity === 'Football' && team.group_name?.trim()).forEach(team => {
+    const groupName = normalizeGroupName(team.group_name);
+    const key = `${team.gender}|${groupName.toUpperCase()}`;
+    if (!groups.has(key)) {
+      groups.set(key, { gender: team.gender, group: groupName, teams: [] });
+    }
+    groups.get(key).teams.push(team);
+  });
+
+  const standings = [...groups.values()].map(group => {
+    const teamStats = new Map(group.teams.map(team => [team.id, {
+      id: team.id,
+      name: team.team_name,
+      gender: team.gender,
+      group: group.group,
+      played: 0,
+      won: 0,
+      drawn: 0,
+      lost: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      points: 0,
+    }]));
+
+    currentFixtures.filter(fixture => fixture.match_status === 'played'
+      && Number.isInteger(fixture.home_score)
+      && Number.isInteger(fixture.away_score)
+      && (!fixture.match_round || fixture.match_round === 1)
+      && fixture.gender === group.gender
+      && normalizeGroupName(fixture.group_name).toUpperCase() === group.group.toUpperCase())
+      .forEach(fixture => {
+        const home = teamStats.get(fixture.home_team_id);
+        const away = teamStats.get(fixture.away_team_id);
+        if (!home || !away) return;
+        home.played += 1;
+        away.played += 1;
+        home.goalsFor += fixture.home_score;
+        home.goalsAgainst += fixture.away_score;
+        away.goalsFor += fixture.away_score;
+        away.goalsAgainst += fixture.home_score;
+        if (fixture.home_score > fixture.away_score) {
+          home.won += 1; home.points += 3; away.lost += 1;
+        } else if (fixture.home_score < fixture.away_score) {
+          away.won += 1; away.points += 3; home.lost += 1;
+        } else {
+          home.drawn += 1; away.drawn += 1; home.points += 1; away.points += 1;
+        }
+      });
+
+    return [...teamStats.values()].sort((a, b) =>
+      b.points - a.points
+      || (b.goalsFor - b.goalsAgainst) - (a.goalsFor - a.goalsAgainst)
+      || b.goalsFor - a.goalsFor
+      || a.name.localeCompare(b.name)
+    ).slice(0, 2).map(team => ({ ...team, qualifies: true }));
+  }).flat();
+
+  return gender ? standings.filter(team => team.gender === gender) : standings;
 }
 
 function setLoginMessage(message, isError = false) {
@@ -106,8 +169,10 @@ async function refreshDashboard() {
     </table>
   ` : '<p class="empty-state">No referees have been added yet.</p>';
 
+  currentFixtures = fixturesResult.data;
   populateFixtureGroupOptions(teams);
   populateGenerateFixturesGroups(teams);
+  populateKnockoutTeamOptions();
   const fixtures = fixturesResult.data;
   const fixtureRows = fixtures.map(fixture => {
     const homeName = teamsById.get(fixture.home_team_id)?.team_name || 'Team removed';
@@ -672,6 +737,29 @@ function populateGenerateFixturesGroups(teams) {
   });
 }
 
+function populateKnockoutTeamOptions() {
+  const genderSelect = document.getElementById('knockoutGender');
+  const firstSelect = document.getElementById('knockoutTeamOne');
+  const secondSelect = document.getElementById('knockoutTeamTwo');
+  if (!genderSelect || !firstSelect || !secondSelect) return;
+
+  const selectedGender = genderSelect.value || 'Men';
+  const qualifiedTeams = computeQualifiedTeams(selectedGender);
+  const options = qualifiedTeams.length
+    ? qualifiedTeams.map(team => `<option value="${escapeHtml(team.id)}">${escapeHtml(`${team.name} (${team.group})`)}</option>`).join('')
+    : '<option value="">No qualified teams yet</option>';
+
+  firstSelect.innerHTML = `<option value="">Select a qualified team</option>${options}`;
+  secondSelect.innerHTML = `<option value="">Select a qualified team</option>${options}`;
+
+  const firstValue = firstSelect.dataset.value;
+  const secondValue = secondSelect.dataset.value;
+  if (firstValue && qualifiedTeams.some(team => team.id === firstValue)) firstSelect.value = firstValue;
+  if (secondValue && qualifiedTeams.some(team => team.id === secondValue)) secondSelect.value = secondValue;
+  firstSelect.disabled = qualifiedTeams.length === 0;
+  secondSelect.disabled = qualifiedTeams.length === 0;
+}
+
 async function generateRoundRobinFixtures(event) {
   const button = event.currentTarget;
   const select = document.getElementById('generateFixturesGroups');
@@ -753,6 +841,58 @@ async function generateRoundRobinFixtures(event) {
     setDashboardMessage(`Could not generate fixtures: ${error.message}`, true);
   } finally {
     button.disabled = false;
+  }
+}
+
+async function addKnockoutFixture() {
+  const stageSelect = document.getElementById('knockoutStage');
+  const genderSelect = document.getElementById('knockoutGender');
+  const teamOneSelect = document.getElementById('knockoutTeamOne');
+  const teamTwoSelect = document.getElementById('knockoutTeamTwo');
+
+  if (!stageSelect || !genderSelect || !teamOneSelect || !teamTwoSelect) return;
+
+  const stage = Number(stageSelect.value || 2);
+  const gender = genderSelect.value;
+  const homeTeamId = teamOneSelect.value;
+  const awayTeamId = teamTwoSelect.value;
+
+  if (!gender || !homeTeamId || !awayTeamId || homeTeamId === awayTeamId) {
+    setDashboardMessage('Select two different qualified teams before creating the knockout fixture.', true);
+    return;
+  }
+
+  const homeTeam = adminTeams.find(team => team.id === homeTeamId);
+  const awayTeam = adminTeams.find(team => team.id === awayTeamId);
+  if (!homeTeam || !awayTeam || homeTeam.gender !== gender || awayTeam.gender !== gender) {
+    setDashboardMessage('Knockout fixtures must include two qualified teams from the same gender category.', true);
+    return;
+  }
+
+  const stageLabel = stage >= 4 ? 'Final' : stage >= 3 ? 'Semi-finals' : 'Quarter-finals';
+  const confirmed = window.confirm(`Create the ${stageLabel} matchup between ${homeTeam.team_name} and ${awayTeam.team_name}?`);
+  if (!confirmed) return;
+
+  try {
+    const { error } = await supabaseClient.from('football_fixtures').insert({
+      gender,
+      group_name: stageLabel,
+      match_round: stage,
+      home_team_id: homeTeamId,
+      away_team_id: awayTeamId,
+    });
+
+    if (error) {
+      setDashboardMessage(`Could not create the knockout fixture: ${error.message}`, true);
+      return;
+    }
+
+    teamOneSelect.value = '';
+    teamTwoSelect.value = '';
+    setDashboardMessage(`${stageLabel} fixture added. Set the date, time, stadium, and referee in the schedule column.`);
+    await refreshDashboard();
+  } catch (error) {
+    setDashboardMessage(`Could not create the knockout fixture: ${error.message}`, true);
   }
 }
 
@@ -1083,6 +1223,8 @@ function initializeAdmin() {
   document.getElementById('newFixtureAway').addEventListener('change', updateFixtureTeamOptions);
   document.getElementById('addFixtureForm').addEventListener('submit', addFixture);
   document.getElementById('generateRoundRobinBtn').addEventListener('click', generateRoundRobinFixtures);
+  document.getElementById('generateKnockoutBtn').addEventListener('click', addKnockoutFixture);
+  document.getElementById('knockoutGender').addEventListener('change', populateKnockoutTeamOptions);
   document.getElementById('clearUnplayedFixturesBtn').addEventListener('click', clearUnplayedFixtures);
   setLoginMessage('Ready to sign in.');
 

@@ -100,6 +100,15 @@ function formatMatchTime(value) {
   return /^\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(value || '') ? value.slice(0, 5) : '—';
 }
 
+function fixtureDisplayGroup(fixture) {
+  if (!fixture || !fixture.match_round || fixture.match_round === 1) {
+    return normalizeGroupName(fixture?.group_name) || 'Knockout';
+  }
+  if (fixture.match_round >= 4) return 'Final';
+  if (fixture.match_round >= 3) return 'Semi-finals';
+  return 'Quarter-finals';
+}
+
 function groupStandings() {
   const groups = new Map();
   state.teams.filter(team => team.activity === 'Football' && team.group_name?.trim()).forEach(team => {
@@ -113,7 +122,8 @@ function groupStandings() {
   });
 
   state.fixtures.filter(fixture => fixture.match_status === 'played'
-      && Number.isInteger(fixture.home_score) && Number.isInteger(fixture.away_score))
+      && Number.isInteger(fixture.home_score) && Number.isInteger(fixture.away_score)
+      && (!fixture.match_round || fixture.match_round === 1))
     .forEach(fixture => {
       const groupName = normalizeGroupName(fixture.group_name);
       const key = `${fixture.gender}|${groupName.toUpperCase()}`;
@@ -269,7 +279,7 @@ function renderPublicFixtures() {
   const refereesById = new Map(state.referees.map(referee => [referee.id, referee]));
   const fixturesByGroup = new Map();
   state.fixtures.forEach(fixture => {
-    const groupName = normalizeGroupName(fixture.group_name);
+    const groupName = fixtureDisplayGroup(fixture);
     const groupKey = `${fixture.gender}|${groupName.toUpperCase()}`;
     const fixtures = fixturesByGroup.get(groupKey) || [];
     fixtures.push(fixture);
@@ -283,9 +293,12 @@ function renderPublicFixtures() {
 
   container.innerHTML = `<div class="group-cards-grid">${[...fixturesByGroup.entries()].map(([key, fixtures]) => {
     const [gender] = key.split('|');
-    const group = normalizeGroupName(fixtures[0].group_name);
+    const group = fixtureDisplayGroup(fixtures[0]);
+    const heading = fixtures[0].match_round && fixtures[0].match_round > 1
+      ? `${escapeHtml(gender)} — ${escapeHtml(group)}`
+      : `${escapeHtml(gender)} — Group ${escapeHtml(group)}`;
     return `<section class="match-group-card">
-      <h3>${escapeHtml(gender)} — Group ${escapeHtml(group)}</h3>
+      <h3>${heading}</h3>
       <div class="table-wrap"><table class="match-table">
         <thead><tr><th>Home Team</th><th>Away Team</th><th>Date</th><th>Time (Africa/Nairobi)</th><th>Venue</th><th>Referee</th><th>Result / status</th></tr></thead>
         <tbody>${fixtures.sort((a, b) =>
