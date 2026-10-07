@@ -101,12 +101,7 @@ function formatMatchTime(value) {
 }
 
 function fixtureDisplayGroup(fixture) {
-  if (!fixture || !fixture.match_round || fixture.match_round === 1) {
-    return normalizeGroupName(fixture?.group_name) || 'Knockout';
-  }
-  if (fixture.match_round >= 4) return 'Final';
-  if (fixture.match_round >= 3) return 'Semi-finals';
-  return 'Quarter-finals';
+  return normalizeGroupName(fixture?.group_name) || 'Knockout';
 }
 
 function groupStandings() {
@@ -122,8 +117,7 @@ function groupStandings() {
   });
 
   state.fixtures.filter(fixture => fixture.match_status === 'played'
-      && Number.isInteger(fixture.home_score) && Number.isInteger(fixture.away_score)
-      && (!fixture.match_round || fixture.match_round === 1))
+      && Number.isInteger(fixture.home_score) && Number.isInteger(fixture.away_score))
     .forEach(fixture => {
       const groupName = normalizeGroupName(fixture.group_name);
       const key = `${fixture.gender}|${groupName.toUpperCase()}`;
@@ -294,13 +288,13 @@ function renderPublicFixtures() {
   container.innerHTML = `<div class="group-cards-grid">${[...fixturesByGroup.entries()].map(([key, fixtures]) => {
     const [gender] = key.split('|');
     const group = fixtureDisplayGroup(fixtures[0]);
-    const heading = fixtures[0].match_round && fixtures[0].match_round > 1
+    const heading = ['Quarter-finals', 'Semi-finals', 'Final'].includes(group)
       ? `${escapeHtml(gender)} — ${escapeHtml(group)}`
       : `${escapeHtml(gender)} — Group ${escapeHtml(group)}`;
     return `<section class="match-group-card">
       <h3>${heading}</h3>
       <div class="table-wrap"><table class="match-table">
-        <thead><tr><th>Home Team</th><th>Away Team</th><th>Date</th><th>Time (Africa/Nairobi)</th><th>Venue</th><th>Referee</th><th>Result / status</th></tr></thead>
+        <thead><tr><th>Round</th><th>Home Team</th><th>Away Team</th><th>Date</th><th>Time (Africa/Nairobi)</th><th>Venue</th><th>Referee</th><th>Result / status</th></tr></thead>
         <tbody>${fixtures.sort((a, b) =>
     (a.match_date || '9999-99-99').localeCompare(b.match_date || '9999-99-99')
     || (a.match_time || '99:99').localeCompare(b.match_time || '99:99')
@@ -313,6 +307,7 @@ function renderPublicFixtures() {
             ? `${fixture.home_score}–${fixture.away_score}`
             : fixture.match_status === 'postponed' ? 'Postponed' : 'Scheduled';
           return `<tr>
+            <td>${escapeHtml(fixture.match_round || 1)}</td>
             <td>${escapeHtml(homeName)}</td>
             <td>${escapeHtml(awayName)}</td>
             <td>${escapeHtml(fixture.match_date || 'Not scheduled')}</td>

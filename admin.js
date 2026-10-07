@@ -190,7 +190,7 @@ async function refreshDashboard() {
     const awayPlayers = registeredFootballPlayers(participantsByTeam.get(fixture.away_team_id) || []);
     return `
       <tr>
-        <td>${escapeHtml(`${fixture.gender} — ${normalizeGroupName(fixture.group_name)}`)}</td>
+        <td>${escapeHtml(`${fixture.gender} — ${normalizeGroupName(fixture.group_name)} (Round ${fixture.match_round})`)}</td>
         <td>${escapeHtml(homeName)} vs ${escapeHtml(awayName)}</td>
         <td class="fixture-schedule-cell">
           <label>Date<input class="date-input" type="date" value="${escapeHtml(validMatchDate(fixture.match_date))}" data-fixture-date="${fixture.id}" /></label>
@@ -954,8 +954,10 @@ async function addFixture(event) {
   }
   const homeTeamId = document.getElementById('newFixtureHome').value;
   const awayTeamId = document.getElementById('newFixtureAway').value;
-  if (!group || !homeTeamId || !awayTeamId || homeTeamId === awayTeamId) {
-    setDashboardMessage('Select a group and two different teams for the fixture.', true);
+  const matchRound = Number(document.getElementById('newFixtureRound').value);
+  if (!group || !homeTeamId || !awayTeamId || homeTeamId === awayTeamId
+      || !Number.isInteger(matchRound) || matchRound < 1) {
+    setDashboardMessage('Select a group, a positive whole-number round, and two different teams for the fixture.', true);
     return;
   }
   const homeTeam = adminTeams.find(team => team.id === homeTeamId);
@@ -971,13 +973,13 @@ async function addFixture(event) {
     const { error } = await supabaseClient.from('football_fixtures').insert({
       gender: group[0],
       group_name: normalizeGroupName(homeTeam.group_name),
-      match_round: 1,
+      match_round: matchRound,
       home_team_id: homeTeamId,
       away_team_id: awayTeamId,
     });
     if (error) {
       setDashboardMessage(error.code === '23505'
-        ? 'That matchup already exists for this group.'
+        ? 'That matchup already exists in this group and round.'
         : `Could not add fixture: ${error.message}`, true);
       return;
     }
