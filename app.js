@@ -182,6 +182,10 @@ function renderStandings() {
   `).join('')}</div>`;
 }
 
+function normalizePlayerLookupKey(value) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 function scorerRankings() {
   const players = new Map();
   const teamsById = new Map(state.teams.map(team => [team.id, team]));
@@ -189,21 +193,27 @@ function scorerRankings() {
     ['home', 'away'].forEach(side => {
       const records = fixture.scorers?.[side];
       if (!Array.isArray(records)) return;
+      const teamId = String(fixture[`${side}_team_id`]);
+      const teamName = teamsById.get(teamId)?.team_name || 'Team unavailable';
       records.forEach(record => {
         const goals = Number(record?.goals);
-        if (!record || record.own_goal === true || !record.participant_id
-            || String(record.team_id) !== String(fixture[`${side}_team_id`])
+        if (!record || record.own_goal === true
             || typeof record.player !== 'string' || !record.player.trim()
-            || !Number.isInteger(goals) || goals < 1) return;
-        const id = String(record.participant_id);
-        const current = players.get(id) || {
-          id,
-          name: record.player.trim(),
-          team: teamsById.get(fixture[`${side}_team_id`])?.team_name || 'Team unavailable',
+            || !Number.isInteger(goals) || goals < 1
+            || String(record.team_id ?? teamId) !== teamId) return;
+
+        const playerName = record.player.trim();
+        const key = record.participant_id
+          ? `participant:${String(record.participant_id)}`
+          : `name:${normalizePlayerLookupKey(playerName)}|${teamId}`;
+        const current = players.get(key) || {
+          id: record.participant_id ? String(record.participant_id) : key,
+          name: playerName,
+          team: teamName,
           goals: 0,
         };
         current.goals += goals;
-        players.set(id, current);
+        players.set(key, current);
       });
     });
   });
@@ -232,19 +242,23 @@ function assistRankings() {
     ['home', 'away'].forEach(side => {
       const records = fixture.assists?.[side];
       if (!Array.isArray(records)) return;
-      records.filter(record => record && record.participant_id
-          && String(record.team_id) === String(fixture[`${side}_team_id`])
-          && record.player && Number.isInteger(record.assists) && record.assists > 0)
+      const teamId = String(fixture[`${side}_team_id`]);
+      const teamName = teamsById.get(teamId)?.team_name || 'Team unavailable';
+      records.filter(record => record && record.player && Number.isInteger(record.assists) && record.assists > 0
+          && String(record.team_id ?? teamId) === teamId)
         .forEach(record => {
-          const id = String(record.participant_id);
-          const current = players.get(id) || {
-            id,
-            name: record.player,
-            team: teamsById.get(fixture[`${side}_team_id`])?.team_name || 'Team unavailable',
+          const playerName = String(record.player).trim();
+          const key = record.participant_id
+            ? `participant:${String(record.participant_id)}`
+            : `name:${normalizePlayerLookupKey(playerName)}|${teamId}`;
+          const current = players.get(key) || {
+            id: record.participant_id ? String(record.participant_id) : key,
+            name: playerName,
+            team: teamName,
             assists: 0,
           };
           current.assists += record.assists;
-          players.set(id, current);
+          players.set(key, current);
         });
     });
   });
