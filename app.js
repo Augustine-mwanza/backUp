@@ -186,22 +186,41 @@ function normalizePlayerLookupKey(value) {
   return String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+function validFixtureScorers(fixture, side) {
+  const records = fixture.scorers?.[side];
+  const score = fixture[`${side}_score`];
+  if (!Array.isArray(records) || !Number.isInteger(score) || score < 0) {
+    return { records: [], valid: false };
+  }
+
+  const teamId = String(fixture[`${side}_team_id`]);
+  const teamRecords = records.filter(record => record
+    && String(record.team_id ?? teamId) === teamId
+    && record.own_goal !== true
+    && typeof record.player === 'string'
+    && record.player.trim()
+    && Number.isInteger(Number(record.goals))
+    && Number(record.goals) > 0);
+  const total = teamRecords.reduce((sum, record) => sum + Number(record.goals), 0);
+
+  return { records: total <= score ? teamRecords : [], valid: total <= score };
+}
+
 function scorerRankings() {
   const players = new Map();
   const teamsById = new Map(state.teams.map(team => [team.id, team]));
+  let invalidFixtureSides = 0;
   state.fixtures.filter(fixture => fixture.match_status === 'played').forEach(fixture => {
     ['home', 'away'].forEach(side => {
-      const records = fixture.scorers?.[side];
-      if (!Array.isArray(records)) return;
+      const fixtureRecords = validFixtureScorers(fixture, side);
+      if (!fixtureRecords.valid) {
+        invalidFixtureSides += 1;
+        return;
+      }
       const teamId = String(fixture[`${side}_team_id`]);
       const teamName = teamsById.get(teamId)?.team_name || 'Team unavailable';
-      records.forEach(record => {
+      fixtureRecords.records.forEach(record => {
         const goals = Number(record?.goals);
-        if (!record || record.own_goal === true
-            || typeof record.player !== 'string' || !record.player.trim()
-            || !Number.isInteger(goals) || goals < 1
-            || String(record.team_id ?? teamId) !== teamId) return;
-
         const playerName = record.player.trim();
         const playerKey = `team:${teamId}|name:${normalizePlayerLookupKey(playerName)}`;
         const current = players.get(playerKey) || {
@@ -216,18 +235,24 @@ function scorerRankings() {
     });
   });
 
-  return [...players.values()].sort((a, b) =>
-    b.goals - a.goals || a.name.localeCompare(b.name));
+  return {
+    players: [...players.values()].sort((a, b) =>
+      b.goals - a.goals || a.name.localeCompare(b.name)),
+    invalidFixtureSides,
+  };
 }
 
 function renderScorerRankings() {
   const container = document.getElementById('scorerRankingsContainer');
-  const players = scorerRankings();
+  const { players, invalidFixtureSides } = scorerRankings();
+  const warning = invalidFixtureSides
+    ? `<p class="error-text">${invalidFixtureSides} team result(s) have scorer totals higher than the match score and were excluded. Review those results in the admin page.</p>`
+    : '';
   if (!players.length) {
-    container.innerHTML = '<p class="empty-state">No registered players have scored yet.</p>';
+    container.innerHTML = `${warning}<p class="empty-state">No registered players have scored yet.</p>`;
     return;
   }
-  container.innerHTML = `<div class="table-wrap"><table class="match-table standings-table">
+  container.innerHTML = `${warning}<div class="table-wrap"><table class="match-table standings-table">
     <thead><tr><th>Player</th><th>Team</th><th>Goals</th></tr></thead>
     <tbody>${players.map(player => `<tr>
       <td>${escapeHtml(player.name)}</td><td>${escapeHtml(player.team)}</td><td><strong>${player.goals}</strong></td>
