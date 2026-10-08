@@ -203,21 +203,34 @@ function scorerRankings() {
             || String(record.team_id ?? teamId) !== teamId) return;
 
         const playerName = record.player.trim();
-        const key = record.participant_id
+        const playerKey = record.participant_id
           ? `participant:${String(record.participant_id)}`
-          : `name:${normalizePlayerLookupKey(playerName)}|${teamId}`;
-        const current = players.get(key) || {
-          id: record.participant_id ? String(record.participant_id) : key,
+          : `legacy:${teamId}|${normalizePlayerLookupKey(playerName)}`;
+        const current = players.get(playerKey) || {
+          id: record.participant_id ? String(record.participant_id) : playerKey,
           name: playerName,
+          teamId,
           team: teamName,
           goals: 0,
         };
         current.goals += goals;
-        players.set(key, current);
+        players.set(playerKey, current);
       });
     });
   });
-  return [...players.values()].sort((a, b) =>
+
+  const merged = new Map();
+  players.forEach(player => {
+    const key = `team:${player.teamId}|name:${normalizePlayerLookupKey(player.name)}`;
+    const existing = merged.get(key) || { ...player };
+    existing.goals = (existing.goals || 0) + (player.goals || 0);
+    if (!existing.id || String(existing.id).startsWith('legacy:')) {
+      existing.id = player.id;
+    }
+    merged.set(key, existing);
+  });
+
+  return [...merged.values()].sort((a, b) =>
     b.goals - a.goals || a.name.localeCompare(b.name));
 }
 
@@ -248,21 +261,34 @@ function assistRankings() {
           && String(record.team_id ?? teamId) === teamId)
         .forEach(record => {
           const playerName = String(record.player).trim();
-          const key = record.participant_id
+          const playerKey = record.participant_id
             ? `participant:${String(record.participant_id)}`
-            : `name:${normalizePlayerLookupKey(playerName)}|${teamId}`;
-          const current = players.get(key) || {
-            id: record.participant_id ? String(record.participant_id) : key,
+            : `legacy:${teamId}|${normalizePlayerLookupKey(playerName)}`;
+          const current = players.get(playerKey) || {
+            id: record.participant_id ? String(record.participant_id) : playerKey,
             name: playerName,
+            teamId,
             team: teamName,
             assists: 0,
           };
           current.assists += record.assists;
-          players.set(key, current);
+          players.set(playerKey, current);
         });
     });
   });
-  return [...players.values()].sort((a, b) =>
+
+  const merged = new Map();
+  players.forEach(player => {
+    const key = `team:${player.teamId}|name:${normalizePlayerLookupKey(player.name)}`;
+    const existing = merged.get(key) || { ...player };
+    existing.assists = (existing.assists || 0) + (player.assists || 0);
+    if (!existing.id || String(existing.id).startsWith('legacy:')) {
+      existing.id = player.id;
+    }
+    merged.set(key, existing);
+  });
+
+  return [...merged.values()].sort((a, b) =>
     b.assists - a.assists || a.name.localeCompare(b.name));
 }
 
