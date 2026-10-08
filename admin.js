@@ -272,11 +272,38 @@ async function refreshDashboard() {
     button.addEventListener('click', () => addAssistRow(button));
   });
   document.querySelectorAll('.remove-scorer-btn').forEach(button => {
-    button.addEventListener('click', () => button.closest('.scorer-row').remove());
+    button.addEventListener('click', () => {
+      const row = button.closest('.scorer-row');
+      const list = row.closest('[data-scorer-list]');
+      const fixtureId = row.closest('tr').querySelector('[data-save-result]').dataset.saveResult;
+      const side = list.dataset.scorerSide;
+      row.remove();
+      updateUnassistedGoalCount(fixtureId, side);
+    });
   });
   document.querySelectorAll('.remove-assist-btn').forEach(button => {
-    button.addEventListener('click', () => button.closest('.assist-row').remove());
+    button.addEventListener('click', () => {
+      const row = button.closest('.assist-row');
+      const list = row.closest('[data-assist-list]');
+      row.remove();
+      const side = list.dataset.assistList.endsWith('-home') ? 'home' : 'away';
+      const fixtureId = list.dataset.assistList.slice(0, -(side.length + 1));
+      updateUnassistedGoalCount(fixtureId, side);
+    });
   });
+  document.querySelectorAll('[data-unassisted-goals]').forEach(element => {
+    updateUnassistedGoalCount(element.dataset.fixtureId, element.dataset.side);
+  });
+  document.querySelectorAll('[data-home-score], [data-away-score], .scorer-goals, .assist-count')
+    .forEach(input => input.addEventListener('input', () => {
+      const row = input.closest('tr');
+      const resultButton = row?.querySelector('[data-save-result]');
+      const side = input.dataset.homeScore !== undefined ? 'home'
+        : input.dataset.awayScore !== undefined ? 'away'
+          : input.closest('[data-scorer-list]')?.dataset.scorerSide
+            || (input.closest('[data-assist-list]')?.dataset.assistList.endsWith('-home') ? 'home' : 'away');
+      if (resultButton && side) updateUnassistedGoalCount(resultButton.dataset.saveResult, side);
+    }));
 }
 
 function participantEditorRow(columns, details = {}) {
@@ -544,6 +571,8 @@ function assistEditorMarkup(fixtureId, side, teamName, players, records) {
   ).join('')}
       </select>
     </div>
+    <p class="privacy-note" data-unassisted-goals data-fixture-id="${fixtureId}" data-side="${side}">Unassisted goals are calculated from the score and assists.</p>
+    <small>Leave this assist list empty when no goals were assisted.</small>
     <button type="button" class="secondary-btn" data-add-assist data-side="${side}" ${players.length ? '' : 'disabled'}>Add assist</button>
   </div>`;
 }
@@ -570,7 +599,52 @@ function addAssistRow(button) {
     <input class="assist-count" type="number" min="1" step="1" value="1" aria-label="Assists made" />
     <button type="button" class="danger-btn remove-assist-btn" aria-label="Remove assist">Remove</button>`;
   list.insertBefore(row, optionSource);
-  row.querySelector('.remove-assist-btn').addEventListener('click', () => row.remove());
+  row.querySelector('.remove-assist-btn').addEventListener('click', () => {
+    row.remove();
+    updateUnassistedGoalCount(fixtureId, button.dataset.side);
+  });
+  row.querySelector('.assist-count').addEventListener('input', () =>
+    updateUnassistedGoalCount(fixtureId, button.dataset.side));
+  updateUnassistedGoalCount(fixtureId, button.dataset.side);
+}
+
+function updateUnassistedGoalCount(fixtureId, side) {
+  const summary = document.querySelector(
+    `[data-unassisted-goals][data-fixture-id="${CSS.escape(fixtureId)}"][data-side="${side}"]`,
+  );
+  const scoreInput = document.querySelector(`[data-${side}-score="${CSS.escape(fixtureId)}"]`);
+  const scorerList = document.querySelector(`[data-scorer-list="${CSS.escape(`${fixtureId}-${side}`)}"]`);
+  const ownGoalList = document.querySelector(`[data-scorer-list="${CSS.escape(`${fixtureId}-${side}-own`)}"]`);
+  const assistList = document.querySelector(`[data-assist-list="${CSS.escape(`${fixtureId}-${side}`)}"]`);
+  if (!summary || !scoreInput || !scorerList || !ownGoalList || !assistList) return;
+
+  const score = Number(scoreInput.value);
+  const scorerInputs = [...scorerList.querySelectorAll('.scorer-goals')];
+  const ownGoalInputs = [...ownGoalList.querySelectorAll('.scorer-goals')];
+  const assistInputs = [...assistList.querySelectorAll('.assist-count')];
+  const counts = [...scorerInputs, ...ownGoalInputs, ...assistInputs].map(input => Number(input.value));
+  if (scoreInput.value === '' || !Number.isInteger(score) || counts.some(count => !Number.isInteger(count) || count < 1)) {
+    if (scorerInputs.length || ownGoalInputs.length || assistInputs.length) {
+      summary.textContent = 'Complete the scorer and assist counts to see unassisted goals.';
+    } else {
+      summary.textContent = 'No assist entries are required for unassisted goals.';
+    }
+    return;
+  }
+
+  const nonOwnGoals = scorerInputs.reduce((total, input) => total + Number(input.value), 0);
+  const totalRecordedGoals = [...scorerInputs, ...ownGoalInputs]
+    .reduce((total, input) => total + Number(input.value), 0);
+  if (totalRecordedGoals !== score) {
+    summary.textContent = `Scorer entries must total ${score} before unassisted goals can be calculated.`;
+    return;
+  }
+  const assists = assistInputs.reduce((total, input) => total + Number(input.value), 0);
+  if (assists > nonOwnGoals) {
+    summary.textContent = `Assist count exceeds ${nonOwnGoals} non-own goal(s).`;
+    return;
+  }
+  summary.textContent = `${nonOwnGoals - assists} goal(s) were not assisted.`;
 }
 
 function addScorerRow(button) {
@@ -586,7 +660,13 @@ function addScorerRow(button) {
     <input class="scorer-goals" type="number" min="1" step="1" value="1" aria-label="Goals scored" />
     <button type="button" class="danger-btn remove-scorer-btn" aria-label="Remove scorer">Remove</button>`;
   list.insertBefore(row, optionSource);
-  row.querySelector('.remove-scorer-btn').addEventListener('click', () => row.remove());
+  row.querySelector('.remove-scorer-btn').addEventListener('click', () => {
+    row.remove();
+    updateUnassistedGoalCount(fixtureId, side);
+  });
+  row.querySelector('.scorer-goals').addEventListener('input', () =>
+    updateUnassistedGoalCount(fixtureId, side));
+  updateUnassistedGoalCount(fixtureId, side);
 }
 
 function validMatchDate(value) {
