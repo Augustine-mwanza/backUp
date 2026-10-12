@@ -13,6 +13,7 @@ const ACTIVITY_COLUMNS = {
 let supabaseClient;
 let adminTeams = [];
 let currentFixtures = [];
+let adminDoneColumnAvailable = true;
 const loginPanel = document.getElementById('loginPanel');
 const dashboard = document.getElementById('dashboard');
 
@@ -110,13 +111,23 @@ async function verifyAdmin(user) {
 }
 
 async function refreshDashboard() {
-  const [teamsResult, participantsResult, fixturesResult, stadiumsResult, refereesResult] = await Promise.all([
+  let [teamsResult, participantsResult, fixturesResult, stadiumsResult, refereesResult] = await Promise.all([
     supabaseClient.from('teams').select('id, activity, team_name, gender, coach, group_name, created_at').order('created_at', { ascending: false }),
     supabaseClient.from('registration_participants').select('id, team_id, details'),
     supabaseClient.from('football_fixtures').select('id, gender, group_name, match_round, home_team_id, away_team_id, match_date, match_time, stadium_id, referee_id, match_status, home_score, away_score, scorers, assists, admin_done').order('gender').order('group_name').order('match_round'),
     supabaseClient.from('stadiums').select('id, name').order('name'),
     supabaseClient.from('referees').select('id, name').order('name'),
   ]);
+  if (fixturesResult.error
+      && (fixturesResult.error.code === '42703' || /admin_done.*does not exist/i.test(fixturesResult.error.message || ''))) {
+    adminDoneColumnAvailable = false;
+    fixturesResult = await supabaseClient.from('football_fixtures')
+      .select('id, gender, group_name, match_round, home_team_id, away_team_id, match_date, match_time, stadium_id, referee_id, match_status, home_score, away_score, scorers, assists')
+      .order('gender').order('group_name').order('match_round');
+    setDashboardMessage('Admin access is available, but the Done feature is disabled because admin_done is missing from this Supabase project.');
+  } else if (!fixturesResult.error) {
+    adminDoneColumnAvailable = true;
+  }
   const error = teamsResult.error || participantsResult.error || fixturesResult.error || stadiumsResult.error || refereesResult.error;
   if (error) throw error;
 
@@ -220,7 +231,7 @@ async function refreshDashboard() {
         </td>
         <td class="table-actions" data-label="Actions">
           ${canEditResult ? `<button class="primary-btn save-result-btn" data-save-result="${fixture.id}">Save result</button>` : ''}
-          ${fixture.match_status === 'played' ? `<button class="secondary-btn" data-done-fixture="${fixture.id}">Done</button>` : ''}
+          ${adminDoneColumnAvailable && fixture.match_status === 'played' ? `<button class="secondary-btn" data-done-fixture="${fixture.id}">Done</button>` : ''}
           ${fixture.match_status === 'postponed'
             ? `<button class="secondary-btn schedule-match-btn" data-schedule-match="${fixture.id}">Mark scheduled</button>`
             : (due && fixture.match_status !== 'played' ? `<button class="secondary-btn postpone-match-btn" data-postpone-match="${fixture.id}">Mark postponed</button>` : '')}
