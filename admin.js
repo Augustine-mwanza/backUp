@@ -113,7 +113,7 @@ async function refreshDashboard() {
   const [teamsResult, participantsResult, fixturesResult, stadiumsResult, refereesResult] = await Promise.all([
     supabaseClient.from('teams').select('id, activity, team_name, gender, coach, group_name, created_at').order('created_at', { ascending: false }),
     supabaseClient.from('registration_participants').select('id, team_id, details'),
-    supabaseClient.from('football_fixtures').select('id, gender, group_name, match_round, home_team_id, away_team_id, match_date, match_time, stadium_id, referee_id, match_status, home_score, away_score, scorers, assists').order('gender').order('group_name').order('match_round'),
+    supabaseClient.from('football_fixtures').select('id, gender, group_name, match_round, home_team_id, away_team_id, match_date, match_time, stadium_id, referee_id, match_status, home_score, away_score, scorers, assists, admin_done').order('gender').order('group_name').order('match_round'),
     supabaseClient.from('stadiums').select('id, name').order('name'),
     supabaseClient.from('referees').select('id, name').order('name'),
   ]);
@@ -173,7 +173,7 @@ async function refreshDashboard() {
   populateFixtureGroupOptions(teams);
   populateGenerateFixturesGroups(teams);
   populateKnockoutTeamOptions();
-  const fixtures = fixturesResult.data;
+  const fixtures = fixturesResult.data.filter(fixture => !fixture.admin_done);
   const fixtureRows = fixtures.map(fixture => {
     const homeName = teamsById.get(fixture.home_team_id)?.team_name || 'Team removed';
     const awayName = teamsById.get(fixture.away_team_id)?.team_name || 'Team removed';
@@ -220,6 +220,7 @@ async function refreshDashboard() {
         </td>
         <td class="table-actions" data-label="Actions">
           ${canEditResult ? `<button class="primary-btn save-result-btn" data-save-result="${fixture.id}">Save result</button>` : ''}
+          ${fixture.match_status === 'played' ? `<button class="secondary-btn" data-done-fixture="${fixture.id}">Done</button>` : ''}
           ${fixture.match_status === 'postponed'
             ? `<button class="secondary-btn schedule-match-btn" data-schedule-match="${fixture.id}">Mark scheduled</button>`
             : (due && fixture.match_status !== 'played' ? `<button class="secondary-btn postpone-match-btn" data-postpone-match="${fixture.id}">Mark postponed</button>` : '')}
@@ -258,6 +259,9 @@ async function refreshDashboard() {
   });
   document.querySelectorAll('[data-save-result]').forEach(button => {
     button.addEventListener('click', () => saveFixtureResult(button.dataset.saveResult, button));
+  });
+  document.querySelectorAll('[data-done-fixture]').forEach(button => {
+    button.addEventListener('click', () => saveFixtureResult(button.dataset.doneFixture, button, true));
   });
   document.querySelectorAll('[data-postpone-match]').forEach(button => {
     button.addEventListener('click', () => setFixtureStatus(button.dataset.postponeMatch, 'postponed', button));
@@ -819,25 +823,38 @@ function populateGenerateFixturesGroups(teams) {
 
 function populateKnockoutTeamOptions() {
   const genderSelect = document.getElementById('knockoutGender');
+  const firstGroupSelect = document.getElementById('knockoutGroupOne');
+  const secondGroupSelect = document.getElementById('knockoutGroupTwo');
   const firstSelect = document.getElementById('knockoutTeamOne');
   const secondSelect = document.getElementById('knockoutTeamTwo');
-  if (!genderSelect || !firstSelect || !secondSelect) return;
+  if (!genderSelect || !firstGroupSelect || !secondGroupSelect || !firstSelect || !secondSelect) return;
 
   const selectedGender = genderSelect.value || 'Men';
   const qualifiedTeams = computeQualifiedTeams(selectedGender);
-  const options = qualifiedTeams.length
-    ? qualifiedTeams.map(team => `<option value="${escapeHtml(team.id)}">${escapeHtml(`${team.name} (${team.group})`)}</option>`).join('')
-    : '<option value="">No qualified teams yet</option>';
+  const groups = [...new Map(qualifiedTeams.map(team => [team.group.toUpperCase(), team.group])).entries()];
+  const previousFirstGroup = firstGroupSelect.value;
+  const previousSecondGroup = secondGroupSelect.value;
+  const groupOptions = excludedGroup => `<option value="">Select a group</option>${groups
+    .filter(([key]) => key !== excludedGroup)
+    .map(([, group]) => `<option value="${escapeHtml(group)}">Group ${escapeHtml(group)}</option>`).join('')}`;
 
-  firstSelect.innerHTML = `<option value="">Select a qualified team</option>${options}`;
-  secondSelect.innerHTML = `<option value="">Select a qualified team</option>${options}`;
+  firstGroupSelect.innerHTML = groupOptions(previousSecondGroup.trim().toUpperCase());
+  secondGroupSelect.innerHTML = groupOptions(previousFirstGroup.trim().toUpperCase());
+  if (groups.some(([, group]) => group === previousFirstGroup)) firstGroupSelect.value = previousFirstGroup;
+  if (groups.some(([, group]) => group === previousSecondGroup)) secondGroupSelect.value = previousSecondGroup;
 
-  const firstValue = firstSelect.dataset.value;
-  const secondValue = secondSelect.dataset.value;
-  if (firstValue && qualifiedTeams.some(team => team.id === firstValue)) firstSelect.value = firstValue;
-  if (secondValue && qualifiedTeams.some(team => team.id === secondValue)) secondSelect.value = secondValue;
-  firstSelect.disabled = qualifiedTeams.length === 0;
-  secondSelect.disabled = qualifiedTeams.length === 0;
+  const fillTeamSelect = (select, groupName) => {
+    const oldValue = select.value;
+    const teams = qualifiedTeams.filter(team => team.group.toUpperCase() === groupName.trim().toUpperCase());
+    select.innerHTML = `<option value="">${groupName ? 'Select a qualified team' : 'Select a group first'}</option>${teams
+      .map(team => `<option value="${escapeHtml(team.id)}">${escapeHtml(team.name)}</option>`).join('')}`;
+    if (teams.some(team => team.id === oldValue)) select.value = oldValue;
+    select.disabled = teams.length === 0;
+  };
+  fillTeamSelect(firstSelect, firstGroupSelect.value);
+  fillTeamSelect(secondSelect, secondGroupSelect.value);
+  firstGroupSelect.disabled = groups.length === 0;
+  secondGroupSelect.disabled = groups.length < 2;
 }
 
 async function generateRoundRobinFixtures(event) {
@@ -927,30 +944,37 @@ async function generateRoundRobinFixtures(event) {
 async function addKnockoutFixture() {
   const stageSelect = document.getElementById('knockoutStage');
   const genderSelect = document.getElementById('knockoutGender');
+  const firstGroupSelect = document.getElementById('knockoutGroupOne');
+  const secondGroupSelect = document.getElementById('knockoutGroupTwo');
   const teamOneSelect = document.getElementById('knockoutTeamOne');
   const teamTwoSelect = document.getElementById('knockoutTeamTwo');
 
-  if (!stageSelect || !genderSelect || !teamOneSelect || !teamTwoSelect) return;
+  if (!stageSelect || !genderSelect || !firstGroupSelect || !secondGroupSelect || !teamOneSelect || !teamTwoSelect) return;
 
   const stage = Number(stageSelect.value || 2);
   const gender = genderSelect.value;
+  const firstGroup = firstGroupSelect.value;
+  const secondGroup = secondGroupSelect.value;
   const homeTeamId = teamOneSelect.value;
   const awayTeamId = teamTwoSelect.value;
 
-  if (!gender || !homeTeamId || !awayTeamId || homeTeamId === awayTeamId) {
-    setDashboardMessage('Select two different qualified teams before creating the knockout fixture.', true);
+  if (!gender || !firstGroup || !secondGroup || firstGroup.toUpperCase() === secondGroup.toUpperCase()
+      || !homeTeamId || !awayTeamId || homeTeamId === awayTeamId) {
+    setDashboardMessage('Select two different groups and one qualified team from each group.', true);
     return;
   }
 
   const homeTeam = adminTeams.find(team => team.id === homeTeamId);
   const awayTeam = adminTeams.find(team => team.id === awayTeamId);
-  if (!homeTeam || !awayTeam || homeTeam.gender !== gender || awayTeam.gender !== gender) {
-    setDashboardMessage('Knockout fixtures must include two qualified teams from the same gender category.', true);
+  if (!homeTeam || !awayTeam || homeTeam.gender !== gender || awayTeam.gender !== gender
+      || normalizeGroupName(homeTeam.group_name).toUpperCase() !== firstGroup.toUpperCase()
+      || normalizeGroupName(awayTeam.group_name).toUpperCase() !== secondGroup.toUpperCase()) {
+    setDashboardMessage('Choose a qualified team from each selected group in the same gender category.', true);
     return;
   }
 
   const stageLabel = stage >= 4 ? 'Final' : stage >= 3 ? 'Semi-finals' : 'Quarter-finals';
-  const confirmed = window.confirm(`Create the ${stageLabel} matchup between ${homeTeam.team_name} and ${awayTeam.team_name}?`);
+  const confirmed = window.confirm(`Create the ${stageLabel} matchup: Group ${firstGroup} (${homeTeam.team_name}) vs Group ${secondGroup} (${awayTeam.team_name})?`);
   if (!confirmed) return;
 
   try {
@@ -969,6 +993,9 @@ async function addKnockoutFixture() {
 
     teamOneSelect.value = '';
     teamTwoSelect.value = '';
+    firstGroupSelect.value = '';
+    secondGroupSelect.value = '';
+    populateKnockoutTeamOptions();
     setDashboardMessage(`${stageLabel} fixture added. Set the date, time, stadium, and referee in the schedule column.`);
     await refreshDashboard();
   } catch (error) {
@@ -1123,7 +1150,7 @@ async function saveFixtureSchedule(id, button) {
   await refreshDashboard();
 }
 
-async function saveFixtureResult(id, button) {
+async function saveFixtureResult(id, button, markDone = false) {
   const homeInput = document.querySelector(`[data-home-score="${CSS.escape(id)}"]`);
   const awayInput = document.querySelector(`[data-away-score="${CSS.escape(id)}"]`);
   const homeScore = homeInput.value;
@@ -1148,6 +1175,7 @@ async function saveFixtureResult(id, button) {
       scorers: { home: homeScorers, away: awayScorers },
       assists: { home: homeAssists, away: awayAssists },
       match_status: 'played',
+      ...(markDone ? { admin_done: true } : {}),
     })
     .eq('id', id);
   if (error) {
@@ -1155,7 +1183,9 @@ async function saveFixtureResult(id, button) {
     setDashboardMessage(`Could not save match result: ${error.message}`, true);
     return;
   }
-  setDashboardMessage('Match result saved and standings updated.');
+  setDashboardMessage(markDone
+    ? 'Match result saved. Fixture cleared from the admin list; standings and public results are preserved.'
+    : 'Match result saved and standings updated.');
   await refreshDashboard();
 }
 
@@ -1307,6 +1337,8 @@ function initializeAdmin() {
   document.getElementById('generateRoundRobinBtn').addEventListener('click', generateRoundRobinFixtures);
   document.getElementById('generateKnockoutBtn').addEventListener('click', addKnockoutFixture);
   document.getElementById('knockoutGender').addEventListener('change', populateKnockoutTeamOptions);
+  document.getElementById('knockoutGroupOne').addEventListener('change', populateKnockoutTeamOptions);
+  document.getElementById('knockoutGroupTwo').addEventListener('change', populateKnockoutTeamOptions);
   document.getElementById('clearUnplayedFixturesBtn').addEventListener('click', clearUnplayedFixtures);
   setLoginMessage('Ready to sign in.');
 

@@ -68,6 +68,7 @@ create table if not exists public.football_fixtures (
 alter table public.football_fixtures
   add column if not exists match_status text not null default 'scheduled'
     check (match_status in ('scheduled', 'postponed', 'played')),
+  add column if not exists admin_done boolean not null default false,
   add column if not exists home_score integer check (home_score is null or home_score >= 0),
   add column if not exists away_score integer check (away_score is null or away_score >= 0),
   add column if not exists match_round integer not null default 1 check (match_round >= 1),
@@ -99,7 +100,22 @@ security definer
 set search_path = ''
 as $$
 begin
-  if not exists (
+  if (new.group_name = 'Quarter-finals' and new.match_round = 2)
+      or (new.group_name = 'Semi-finals' and new.match_round = 3)
+      or (new.group_name = 'Final' and new.match_round = 4) then
+    if not exists (
+      select 1
+      from public.teams as home_team
+      join public.teams as away_team on away_team.id = new.away_team_id
+      where home_team.id = new.home_team_id
+        and home_team.activity = 'Football'
+        and away_team.activity = 'Football'
+        and home_team.gender = new.gender
+        and away_team.gender = new.gender
+    ) then
+      raise exception 'Knockout fixture teams must be football teams in the fixture gender';
+    end if;
+  elsif not exists (
     select 1
     from public.teams as home_team
     join public.teams as away_team on away_team.id = new.away_team_id
@@ -198,7 +214,13 @@ begin
 
     delete from public.football_fixtures
     where (home_team_id = new.id or away_team_id = new.id)
-      and not (gender = target_gender and upper(public.normalize_group_name(group_name)) = target_group);
+      and not (
+        gender = target_gender
+        and (
+          upper(public.normalize_group_name(group_name)) = target_group
+          or group_name in ('Quarter-finals', 'Semi-finals', 'Final')
+        )
+      );
 
   else
     delete from public.football_fixtures
@@ -361,7 +383,7 @@ grant select, insert, delete on public.registration_participants to authenticate
 grant insert, delete on public.stadiums to authenticated;
 grant insert, delete on public.referees to authenticated;
 grant insert, delete on public.football_fixtures to authenticated;
-grant update (match_date, match_time, stadium_id, referee_id, match_status, home_score, away_score, scorers, assists) on public.football_fixtures to authenticated;
+grant update (match_date, match_time, stadium_id, referee_id, match_status, home_score, away_score, scorers, assists, admin_done) on public.football_fixtures to authenticated;
 grant delete on public.football_fixtures to authenticated;
 revoke all on public.app_admins from anon, authenticated;
 

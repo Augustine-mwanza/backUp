@@ -81,12 +81,14 @@
           </div>
           <div class="fixture-management-actions">
             <div class="generate-fixtures-form">
-              <p><strong>Generate knockout fixtures</strong> — Select the teams that qualified from their groups and create the next-stage matchups.</p>
+              <p><strong>Generate knockout fixtures</strong> — Choose two groups that qualified, then select one qualified team from each group.</p>
               <div class="generate-fixtures-inputs">
                 <label>Stage<select id="knockoutStage"><option value="2">Quarter-finals</option><option value="3">Semi-finals</option><option value="4">Final</option></select></label>
                 <label>Gender<select id="knockoutGender"><option value="Men">Men</option><option value="Women">Women</option></select></label>
-                <label>Qualified team 1<select id="knockoutTeamOne" required><option value="">Select a qualified team</option></select></label>
-                <label>Qualified team 2<select id="knockoutTeamTwo" required><option value="">Select a qualified team</option></select></label>
+                <label>First group<select id="knockoutGroupOne" required><option value="">Select first group</option></select></label>
+                <label>Second group<select id="knockoutGroupTwo" required><option value="">Select second group</option></select></label>
+                <label>Qualified team from first group<select id="knockoutTeamOne" required><option value="">Select a group first</option></select></label>
+                <label>Qualified team from second group<select id="knockoutTeamTwo" required><option value="">Select a group first</option></select></label>
                 <button id="generateKnockoutBtn" class="primary-btn" type="button">Add knockout fixture</button>
               </div>
             </div>
@@ -119,6 +121,6 @@
           `Sign-in request error: ${event.reason?.message || String(event.reason)}`;
       });
     </script>
-    <script src="admin.js?v=20261007-2" onerror="document.getElementById('loginMessage').textContent = 'Could not load admin.js. Check that the local web server is serving this folder, then reload.'"></script>
+    <script src="admin.js?v=20261012-2" onerror="document.getElementById('loginMessage').textContent = 'Could not load admin.js. Check that the local web server is serving this folder, then reload.'"></script>
   </body>
 </html>
